@@ -13,7 +13,7 @@ def evaluate_speech_with_ai(prompt_text, user_response):
     if not api_key:
         return "⚠️ Configura GEMINI_API_KEY en Secrets para activar la retroalimentación."
     
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
     
     sys_prompt = f"""
     Eres una tutora de inglés empática, amigable y muy clara para una estudiante hispanohablante.
