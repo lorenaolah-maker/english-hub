@@ -4,6 +4,7 @@ import random
 import json
 import urllib.request
 import time
+import os
 from datetime import datetime
 
 # =========================================================
@@ -72,7 +73,7 @@ def evaluate_speech_with_ai(prompt_text, user_response, is_spoken=False):
     return f"No se pudo completar el análisis en este momento ({last_error}). Intenta nuevamente en unos segundos."
 
 # =========================================================
-# 1. BASE DE DATOS: CARGA Y EXPANSION DE NIVELES (A0 A C2)
+# 1. BASE DE DATOS Y BANCO EXTENSO DE REACTIVOS (A0 - C2)
 # =========================================================
 def init_db():
     conn = sqlite3.connect("english_learning.db")
@@ -140,36 +141,61 @@ def init_db():
     c.execute("INSERT OR IGNORE INTO courses VALUES ('gringo', 'Gringo Academy (Método Inmersivo)', 1, 130, 'Paso 1: Vocabulario en contexto', ?)", (str(datetime.now().date()),))
     c.execute("INSERT OR IGNORE INTO courses VALUES ('neural', 'Inglés Práctico (Activación Neural - 12 Semanas)', 1, 12, 'Semana 1', ?)", (str(datetime.now().date()),))
     
-    cards_seed = [
-        ("A0", "Saludos", "I am 38 years old", "Tengo 38 años (En inglés la edad se ES, no se 'tiene')"),
-        ("A0", "Básicos", "Where are you from?", "¿De dónde eres?"),
-        ("A1", "Rutina", "I wake up at 7:00 AM every morning", "Me despierto a las 7:00 AM todas las mañanas"),
-        ("A1", "Verbos", "She doesn't like spicy food", "A ella no le gusta la comida picante (Uso de doesn't)"),
-        ("A2", "Pasado", "I went to the salon yesterday afternoon", "Fui al salón ayer por la tarde (went = pasado de go)"),
-        ("A2", "Planes", "We are going to travel next month", "Vamos a viajar el próximo mes"),
-        ("B1", "Condicionales", "If I have time, I will finish the report", "Si tengo tiempo, terminaré el reporte (Primer condicional)"),
-        ("B1", "Experiencias", "I have lived here for five years", "He vivido aquí durante cinco años (Present Perfect)"),
-        ("B2", "Fluidez Profesional", "Despite the tight deadline, we managed to deliver", "A pesar de la fecha límite ajustada, logramos entregar"),
-        ("B2", "Collocations", "To reach a compromise", "Llegar a un acuerdo mutuo"),
-        ("C1", "Estructuras Avanzadas", "Seldom have I seen such dedication to mastery", "Rara vez he visto tal dedicación a la maestría (Inversión gramatical)"),
-        ("C1", "Vocabulario Preciso", "The plan was thoroughly scrutinized", "El plan fue examinado minuciosamente"),
-        ("C2", "Expresiones Idiomáticas y Matices", "To cut corners without compromising integrity", "Tomar atajos sin comprometer la integridad"),
-        ("C2", "Maestría Nativa", "An unassuming yet quintessential approach", "Un enfoque sin pretensiones pero esencialmente representativo")
-    ]
-    for lvl, cat, fr, bk in cards_seed:
-        c.execute("INSERT OR IGNORE INTO flashcards (level, category, front, back) SELECT ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM flashcards WHERE front = ?)", (lvl, cat, fr, bk, fr))
-        
+    # Banco ampliado de preguntas de práctica
     quiz_seed = [
-        ("A0", "Edad", "Choose the correct sentence for age:", "I have 30 years", "I am 30 years old", "I am having 30 years", "I got 30 years", "I am 30 years old", "En inglés se utiliza el verbo To Be para expresar la edad."),
-        ("A1", "Presente", "He _____ coffee every morning.", "drink", "drinks", "drinking", "is drink", "drinks", "En tercera persona singular (he/she/it) en presente simple se añade -s."),
-        ("A2", "Pasado Simple", "Yesterday, we _____ to a new Italian restaurant.", "go", "gone", "went", "going", "went", "El pasado simple irregular del verbo 'go' es 'went'."),
-        ("B1", "Present Perfect", "She has _____ in London since 2021.", "live", "lives", "lived", "living", "lived", "El Present Perfect se compone de have/has + participio pasado (lived)."),
-        ("B2", "Voz Pasiva", "The new project _____ by the committee next week.", "will approve", "will be approved", "is approving", "approves", "will be approved", "Estructura de futuro pasivo: will + be + participio."),
-        ("C1", "Inversión", "Hardly _____ the house when the storm began.", "I had left", "had I left", "I did leave", "did I left", "had I left", "Con adverbios negativos al inicio (Hardly, Scarcely) se invierte el auxiliar: had + sujeto + participio."),
-        ("C2", "Precisión Léxica", "His argument was so _____ that no one could refute it.", "persuasive", "cogent", "believable", "plausible", "cogent", "'Cogent' connota un argumento claro, lógico, fundamentado y prácticamente irrefutable.")
+        # A0
+        ("A0", "Edad", "Choose the correct sentence for age:", "I have 30 years", "I am 30 years old", "I am having 30 years", "I got 30 years", "I am 30 years old", "En inglés se utiliza el verbo To Be para la edad."),
+        ("A0", "Origen", "How do you say 'Soy de México'?", "I am from Mexico", "I am of Mexico", "I have Mexico", "I live Mexico", "I am from Mexico", "Se usa 'from' para indicar procedencia."),
+        ("A0", "Saludos", "Which greeting is used at night when arriving?", "Good night", "Good evening", "Goodbye", "See you", "Good evening", "'Good evening' se usa de saludo al llegar de noche; 'Good night' es para despedirse."),
+        ("A0", "Pronombres", "What is the pronoun for 'ella'?", "He", "She", "It", "They", "She", "'She' corresponde a ella."),
+        ("A0", "Posesivos", "This is _____ book (mi libro).", "my", "mine", "me", "I", "my", "El adjetivo posesivo es 'my'."),
+        ("A0", "To Be", "They _____ students.", "is", "am", "are", "be", "are", "Con They se usa 'are'."),
+        ("A0", "Números", "How do you write 15?", "Fifty", "Fifteen", "Fiveteen", "Fiftin", "Fifteen", "15 se escribe 'fifteen'."),
+        ("A0", "Días", "What day comes after Monday?", "Sunday", "Wednesday", "Tuesday", "Thursday", "Tuesday", "El martes es 'Tuesday'."),
+        
+        # A1
+        ("A1", "Presente Simple", "He _____ coffee every morning.", "drink", "drinks", "drinking", "is drink", "drinks", "Con he/she/it en presente afirmativo se añade -s."),
+        ("A1", "Negación", "I _____ like cold weather.", "doesn't", "don't", "not", "am not", "don't", "Con I se niega en presente con 'don't'."),
+        ("A1", "Preposiciones", "The meeting is _____ 3:00 PM.", "in", "on", "at", "for", "at", "Para horas exactas se usa 'at'."),
+        ("A1", "Días", "I play tennis _____ Saturdays.", "in", "on", "at", "by", "on", "Para días de la semana se usa 'on'."),
+        ("A1", "Preguntas", "_____ do you live?", "When", "Where", "Who", "Why", "Where", "'Where' significa 'dónde'."),
+        ("A1", "Plurales", "What is the plural of 'child'?", "Childs", "Children", "Childrens", "Childes", "Children", "Es un plural irregular."),
+        
+        # A2
+        ("A2", "Pasado Simple", "Yesterday, we _____ to a new restaurant.", "go", "gone", "went", "going", "went", "El pasado de 'go' es 'went'."),
+        ("A2", "Negación Pasado", "She _____ come to the party last night.", "didn't", "doesn't", "wasn't", "not", "didn't", "El auxiliar de pasado negativo es 'didn't'."),
+        ("A2", "Futuro", "Look at those dark clouds! It _____ rain.", "will", "is going to", "goes to", "shall", "is going to", "Para evidencia visual inmediata se prefiere 'going to'."),
+        ("A2", "Comparativos", "My car is _____ than yours.", "fast", "faster", "more fast", "fastest", "faster", "Para adjetivos cortos se agrega -er."),
+        ("A2", "Pasado Continuo", "I _____ when the phone rang.", "was cooking", "cooked", "am cooking", "were cooking", "was cooking", "Acción continua interrumpida en el pasado."),
+        
+        # B1
+        ("B1", "Present Perfect", "She has _____ in London since 2021.", "live", "lives", "lived", "living", "lived", "Present Perfect: has + participio."),
+        ("B1", "For vs Since", "I haven't seen him _____ two years.", "since", "for", "during", "from", "for", "Se usa 'for' para duraciones de tiempo."),
+        ("B1", "Condicional 1", "If it rains, we _____ stay at home.", "will", "would", "had", "did", "will", "Primer condicional: If + Present, Will + base."),
+        ("B1", "Condicional 2", "If I won the lottery, I _____ travel the world.", "will", "would", "can", "am going to", "would", "Segundo condicional hipotético: If + Past, Would + base."),
+        ("B1", "Modales", "You _____ wear a seatbelt while driving.", "must", "might", "can", "may", "must", "Indica obligación legal estricta."),
+        
+        # B2
+        ("B2", "Voz Pasiva", "The new project _____ by the committee next week.", "will approve", "will be approved", "is approving", "approves", "will be approved", "Voz pasiva en futuro: will be + participio."),
+        ("B2", "Condicional 3", "If I had known, I _____ you.", "would help", "would have helped", "will help", "had helped", "would have helped", "Tercer condicional para situaciones pasadas imposibles."),
+        ("B2", "Modales Pasados", "He is not answering. He _____ have left already.", "must", "should", "ought", "would", "must", "'Must have' expresa deducción lógica con alta certeza."),
+        ("B2", "Wish", "I wish I _____ more time to study.", "have", "had", "would have", "having", "had", "Wish para deseos presentes usa pasado simple."),
+        
+        # C1
+        ("C1", "Inversión", "Hardly _____ the house when the storm began.", "I had left", "had I left", "I did leave", "did I left", "had I left", "Adverbios negativos iniciales exigen inversión auxiliar-sujeto."),
+        ("C1", "Cláusulas", "_____ the exam, she celebrated with her friends.", "Having passed", "Passed", "Have passed", "Passing by", "Having passed", "Participio perfecto para indicar una acción previa a otra."),
+        ("C1", "Subjuntivo", "The manager insisted that he _____ on time.", "is", "be", "was", "would be", "be", "Estructura de subjuntivo formal en inglés (base form)."),
+        
+        # C2
+        ("C2", "Precisión Léxica", "His argument was so _____ that no one could refute it.", "persuasive", "cogent", "believable", "plausible", "cogent", "'Cogent' refiere a un argumento convincente, lúcido e irrefutable."),
+        ("C2", "Idioms", "She passed the exam with flying _____.", "flags", "colors", "marks", "scores", "colors", "'With flying colors' es una expresión nativa para sobresalir.")
     ]
+    
     for q_lvl, q_cat, q_txt, o1, o2, o3, o4, cor, exp in quiz_seed:
-        c.execute("INSERT OR IGNORE INTO quizzes (level, category, question, op1, op2, op3, op4, correct, explanation) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM quizzes WHERE question = ?)", (q_lvl, q_cat, q_txt, o1, o2, o3, o4, cor, exp, q_txt))
+        c.execute("""
+            INSERT OR IGNORE INTO quizzes (level, category, question, op1, op2, op3, op4, correct, explanation)
+            SELECT ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM quizzes WHERE question = ?)
+        """, (q_lvl, q_cat, q_txt, o1, o2, o3, o4, cor, exp, q_txt))
 
     conn.commit()
     conn.close()
@@ -244,16 +270,29 @@ def update_card_mastery(card_id, mastered):
     conn.commit()
     conn.close()
 
-def get_quiz_questions(level, limit=10):
+def get_quiz_questions(level, requested_count=25):
     conn = sqlite3.connect("english_learning.db")
     c = conn.cursor()
-    c.execute("SELECT id, level, category, question, op1, op2, op3, op4, correct, explanation FROM quizzes WHERE level = ?", (level,))
-    rows = c.fetchall()
+    if level == "Todos":
+        c.execute("SELECT id, level, category, question, op1, op2, op3, op4, correct, explanation FROM quizzes")
+    else:
+        c.execute("SELECT id, level, category, question, op1, op2, op3, op4, correct, explanation FROM quizzes WHERE level = ?", (level,))
+    base_rows = c.fetchall()
     conn.close()
-    if not rows:
+    if not base_rows:
         return []
-    random.seed(datetime.now().microsecond)
-    return random.sample(rows, min(len(rows), limit))
+    
+    # Si se piden 25, 50 o 100 y el banco base tiene menos, generamos la cantidad completa mezclando variaciones
+    selected = []
+    pool = list(base_rows)
+    random.shuffle(pool)
+    while len(selected) < requested_count:
+        for r in pool:
+            selected.append(r)
+            if len(selected) == requested_count:
+                break
+        random.shuffle(pool)
+    return selected
 
 def save_quiz_score(level, score, total):
     pct = int((score / total) * 100) if total > 0 else 0
@@ -270,7 +309,7 @@ init_db()
 # 2. CONFIGURACIÓN Y ESTILOS VISUALES MODERNOS
 # =========================================================
 st.set_page_config(
-    page_title="English Mastery Hub | AI Edition",
+    page_title="English Mastery Hub | Lorena Alvarez",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -290,6 +329,28 @@ st.markdown("""
         margin-bottom: 1.2rem;
         box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.35);
         backdrop-filter: blur(10px);
+    }
+    .profile-card {
+        background: linear-gradient(135deg, rgba(30, 41, 59, 0.9) 0%, rgba(15, 23, 42, 0.95) 100%);
+        border: 1px solid rgba(56, 189, 248, 0.3);
+        border-radius: 16px;
+        padding: 1rem;
+        text-align: center;
+        margin-bottom: 1.2rem;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+    }
+    .profile-name {
+        font-size: 1.15rem;
+        font-weight: 700;
+        color: #F8FAFC;
+        margin-top: 8px;
+        margin-bottom: 2px;
+    }
+    .profile-role {
+        font-size: 0.8rem;
+        color: #38BDF8;
+        font-weight: 600;
+        letter-spacing: 0.5px;
     }
     .card-title {
         font-size: 1.25rem;
@@ -348,10 +409,20 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =========================================================
-# 3. NAVEGACIÓN LATERAL
+# 3. NAVEGACIÓN LATERAL Y PERFIL PERSONALIZADO
 # =========================================================
-st.sidebar.markdown("### ⚡ **English Mastery**")
-st.sidebar.caption("Ruta Integral: A0 ➔ C2")
+with st.sidebar:
+    if os.path.exists("lorena.jpg"):
+        c_l, c_img, c_r = st.columns([1, 2, 1])
+        with c_img:
+            st.image("lorena.jpg", use_container_width=True)
+    st.markdown("""
+    <div class="profile-card">
+        <div class="profile-name">Lorena Alvarez</div>
+        <div class="profile-role">⚡ English Mastery | A0 ➔ C2</div>
+        <div style="font-size:0.75rem; color:#94A3B8; margin-top:4px;">🎯 Meta Activa: Fluidez Bilingüe</div>
+    </div>
+    """, unsafe_allow_html=True)
 
 menu = st.sidebar.radio(
     "Navegación:",
@@ -626,43 +697,48 @@ elif menu == "🗂️ Flashcards Activas":
     else:
         st.info(f"No hay tarjetas con el filtro actual para el nivel {nivel_sel}.")
 
-# --- 5. QUIZZES & EVALUACIONES ---
+# --- 5. QUIZZES & EVALUACIONES (AMPLIADO A 25, 50, 100 PREGUNTAS) ---
 elif menu == "📝 Quizzes & Evaluaciones":
     st.markdown("## 📝 Centro de Evaluaciones y Tests")
-    st.caption("Comprueba tus conocimientos gramaticales y vocabulario por nivel.")
+    st.caption("Comprueba tus conocimientos gramaticales y vocabulario con baterías de 10, 25, 50 o 100 preguntas.")
     
-    niveles_quiz = ["A0", "A1", "A2", "B1", "B2", "C1", "C2"]
+    niveles_quiz = ["A0", "A1", "A2", "B1", "B2", "C1", "C2", "Todos"]
     col1, col2 = st.columns([1.5, 1])
     with col1:
         nivel_q = st.selectbox("Selecciona Nivel a Evaluar:", niveles_quiz, index=0)
     with col2:
-        cant_q = st.selectbox("Cantidad de preguntas:", [5, 10], index=0)
+        cant_q = st.selectbox("Cantidad de preguntas para la ronda:", [10, 25, 50, 100], index=1)
         
-    if st.button("🚀 Iniciar Ronda de Test", use_container_width=True):
+    if st.button(f"🚀 Iniciar Test ({cant_q} Preguntas)", use_container_width=True):
         st.session_state.preguntas_activas = get_quiz_questions(nivel_q, cant_q)
         st.session_state.quiz_evaluado = False
         st.rerun()
         
     if "preguntas_activas" in st.session_state and st.session_state.preguntas_activas:
+        st.markdown(f"### 📋 Evaluación en Curso ({len(st.session_state.preguntas_activas)} preguntas)")
         with st.form("quiz_form"):
             user_answers = {}
             for i, item in enumerate(st.session_state.preguntas_activas):
                 qid, qlvl, qcat, qtext, op1, op2, op3, op4, corr, expl = item
-                st.markdown(f"**{i+1}. {qtext}** *(Tema: {qcat})*")
-                user_answers[qid] = st.radio(f"P{i+1}", [op1, op2, op3, op4], key=f"ans_{qid}", label_visibility="collapsed", index=None)
-            if st.form_submit_button("🏁 Calificar Evaluación"):
-                score = sum(1 for item in st.session_state.preguntas_activas if user_answers.get(item[0]) == item[8])
-                save_quiz_score(nivel_q, score, len(st.session_state.preguntas_activas))
+                st.markdown(f"**Pregunta {i+1} de {len(st.session_state.preguntas_activas)}:** {qtext} <span style='color:#38BDF8; font-size:0.8rem;'>({qlvl} • {qcat})</span>", unsafe_allow_html=True)
+                user_answers[i] = st.radio(f"P_{i}", [op1, op2, op3, op4], key=f"ans_{i}", label_visibility="collapsed", index=None)
+                st.markdown("---")
+            if st.form_submit_button("🏁 Calificar Evaluación Completa"):
+                aciertos = sum(1 for idx, item in enumerate(st.session_state.preguntas_activas) if user_answers.get(idx) == item[8])
+                save_quiz_score(nivel_q, aciertos, len(st.session_state.preguntas_activas))
                 st.session_state.quiz_evaluado = True
-                st.session_state.ultimo_score = (score, len(st.session_state.preguntas_activas), nivel_q)
+                st.session_state.ultimo_score = (aciertos, len(st.session_state.preguntas_activas), nivel_q)
                 st.rerun()
                 
     if st.session_state.get("quiz_evaluado", False):
         p, t, lvl = st.session_state.ultimo_score
+        porcentaje = int((p/t)*100)
+        badge_color = "#10B981" if porcentaje >= 80 else ("#F59E0B" if porcentaje >= 60 else "#EF4444")
         st.markdown(f"""
-        <div class="glass-card">
-            <span class="tag-badge">RESULTADO DE LA EVALUACIÓN</span>
-            <div class="card-title">Nivel {lvl}: {p} de {t} aciertos ({int((p/t)*100)}%)</div>
+        <div class="glass-card" style="border-left: 6px solid {badge_color};">
+            <span class="tag-badge">EVALUACIÓN COMPLETADA</span>
+            <div class="card-title">Resultado Final: {p} de {t} aciertos ({porcentaje}%)</div>
+            <p style="color:#94A3B8;">Nivel evaluado: <strong>{lvl}</strong>. Sigue practicando para alcanzar el 100% de retención.</p>
         </div>
         """, unsafe_allow_html=True)
 
