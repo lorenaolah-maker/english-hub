@@ -6,12 +6,14 @@ import urllib.request
 from datetime import datetime
 
 # ==========================================
-# 0. TUTOR INTELIGENTE (CONEXIÓN ROBUSTA)
+# 0. TUTOR INTELIGENTE (GEMINI 2.5 FLASH)
 # ==========================================
 def evaluate_speech_with_ai(prompt_text, user_response):
-    api_key = st.secrets.get("GEMINI_API_KEY", "").strip()
+    api_key = str(st.secrets.get("GEMINI_API_KEY", "")).strip().strip('"').strip("'")
     if not api_key:
         return "⚠️ Configura GEMINI_API_KEY en Secrets para activar la retroalimentación."
+    
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
     
     sys_prompt = f"""
     Eres una tutora de inglés empática, amigable y muy clara para una estudiante hispanohablante.
@@ -35,42 +37,20 @@ def evaluate_speech_with_ai(prompt_text, user_response):
         ]
     }
     data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=data,
+        headers={"Content-Type": "application/json"}
+    )
     
-    # Modelos compatibles ordenados por prioridad
-    modelos = [
-        "gemini-2.5-flash",
-        "gemini-2.0-flash",
-        "gemini-1.5-flash",
-        "gemini-flash"
-    ]
-    
-    ultimo_error = ""
-    for m in modelos:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={api_key}"
-        req = urllib.request.Request(
-            url,
-            data=data,
-            headers={
-                "Content-Type": "application/json",
-                "x-goog-api-key": api_key
-            }
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=12) as response:
-                res_json = json.loads(response.read().decode("utf-8"))
-                candidate = res_json.get("candidates", [{}])[0]
-                parts = candidate.get("content", {}).get("parts", [{}])
-                texto = parts[0].get("text", "")
-                if texto:
-                    return texto
-        except urllib.error.HTTPError as e:
-            ultimo_error = f"{e.code} ({e.reason})"
-            continue
-        except Exception as e:
-            ultimo_error = str(e)
-            continue
-            
-    return f"No se pudo conectar con el modelo. Último reporte: {ultimo_error}"
+    try:
+        with urllib.request.urlopen(req, timeout=15) as response:
+            res_json = json.loads(response.read().decode("utf-8"))
+            candidate = res_json.get("candidates", [{}])[0]
+            parts = candidate.get("content", {}).get("parts", [{}])
+            return parts[0].get("text", "No se recibió respuesta del modelo.")
+    except Exception as e:
+        return f"Error al conectar con la IA: {str(e)}"
 
 # ==========================================
 # 1. BASE DE DATOS Y ESTRUCTURA DE PROGRESO
