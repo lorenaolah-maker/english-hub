@@ -3,58 +3,78 @@ import sqlite3
 import random
 import json
 import urllib.request
+import time
 from datetime import datetime
 
-# ==========================================
-# 0. TUTOR INTELIGENTE (GEMINI 3.8 FLASH)
-# ==========================================
-def evaluate_speech_with_ai(prompt_text, user_response):
+# =========================================================
+# 0. TUTOR INTELIGENTE CON FALLBACK Y ROBUSTEZ TOTAL
+# =========================================================
+def evaluate_speech_with_ai(prompt_text, user_response, is_spoken=False):
     api_key = str(st.secrets.get("GEMINI_API_KEY", "")).strip().strip('"').strip("'")
     if not api_key:
-        return "⚠️ Configura GEMINI_API_KEY en Secrets para activar la retroalimentación."
+        return "⚠️ Configura GEMINI_API_KEY en Secrets de Streamlit para activar la retroalimentación."
     
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key={api_key}"
+    tipo_modalidad = "HABILIDAD ORAL / SPEAKING" if is_spoken else "ESCRITURA / WRITING"
     
     sys_prompt = f"""
-    Eres una tutora de inglés empática, amigable y muy clara para una estudiante hispanohablante.
+    Eres una tutora nativa de inglés experta, empática y rigurosa para estudiantes hispanohablantes.
+    Modalidad evaluada: {tipo_modalidad}.
     Reto asignado: "{prompt_text}"
-    Respuesta de la estudiante: "{user_response}"
+    Respuesta entregada por el alumno: "{user_response}"
 
-    Evalúa su respuesta y entrega tu análisis con este formato exacto:
-    🎯 **Calificación:** [Puntaje de 1 a 10]/10
-    🔍 **Corrección Gramatical:** [Explica en español claro los errores cometidos. Si usó 'have' para la edad, explica por qué en inglés se usa el verbo To Be].
-    ✨ **Cómo decirlo como nativo:** [Escribe la oración corregida y pulida en inglés para que la repita].
-    💡 **Consejo de Oro:** [Un consejo práctico de pronunciación o estructura].
+    Tu objetivo es brindar retroalimentación exhaustiva estructurada exactamente en estas secciones:
+    
+    🎯 **Puntuación Global:** [Nota del 1 al 10]/10
+    
+    🔍 **Análisis Gramatical y Sintaxis:**
+    - Identifica cada detalle de concordancia, tiempos verbales y puntuación.
+    - Si se trata de errores típicos hispanohablantes (como usar 'have' en vez de 'to be' para la edad, omisión de pronombres, o preposiciones in/on/at), explica el porqué de forma clara y pedagógica.
+    
+    ✨ **Versión Nivel Nativo (Natural Phrasing):**
+    - Entrega la versión pulida exactamente como la diría un nativo americano o británico contemporáneo en una conversación real.
+    
+    🗣️ **Guía Fonética y Pronunciación:**
+    - Señala las 2 o 3 palabras clave de la respuesta con su pronunciación fonética simplificada en español (ej. *comfortable -> KÖMF-ter-buhl*) y consejos para enlazar sonidos (connected speech).
+    
+    💡 **Consejo de Oro para Recordar:**
+    - Una regla mnemotécnica o truco rápido para nunca más cometer ese error.
     """
     
     payload = {
-        "contents": [
-            {
-                "parts": [
-                    {"text": sys_prompt}
-                ]
-            }
-        ]
+        "contents": [{"parts": [{"text": sys_prompt}]}],
+        "generationConfig": {"temperature": 0.4, "maxOutputTokens": 1000}
     }
     data = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(
-        url,
-        data=data,
-        headers={"Content-Type": "application/json"}
-    )
     
-    try:
-        with urllib.request.urlopen(req, timeout=15) as response:
-            res_json = json.loads(response.read().decode("utf-8"))
-            candidate = res_json.get("candidates", [{}])[0]
-            parts = candidate.get("content", {}).get("parts", [{}])
-            return parts[0].get("text", "No se recibió respuesta del modelo.")
-    except Exception as e:
-        return f"Error al conectar con la IA: {str(e)}"
+    # Modelos activos en orden de estabilidad y disponibilidad
+    candidate_models = ["gemini-flash-latest", "gemini-2.5-flash", "gemini-3.8-flash"]
+    last_error = ""
+    
+    for model_name in candidate_models:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={"Content-Type": "application/json"}
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=30) as response:
+                res_json = json.loads(response.read().decode("utf-8"))
+                candidates = res_json.get("candidates", [])
+                if candidates:
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    if parts and "text" in parts[0]:
+                        return parts[0]["text"]
+        except Exception as e:
+            last_error = str(e)
+            time.sleep(0.5)
+            continue
+            
+    return f"No se pudo completar el análisis en este momento ({last_error}). Intenta nuevamente en unos segundos."
 
-# ==========================================
-# 1. BASE DE DATOS Y ESTRUCTURA DE PROGRESO
-# ==========================================
+# =========================================================
+# 1. BASE DE DATOS: CARGA Y EXPANSION DE NIVELES (A0 A C2)
+# =========================================================
 def init_db():
     conn = sqlite3.connect("english_learning.db")
     c = conn.cursor()
@@ -65,7 +85,8 @@ def init_db():
             current_unit INTEGER,
             total_units INTEGER,
             current_step TEXT,
-            last_study TEXT
+            last_study TEXT,
+            platform_url TEXT
         )
     """)
     c.execute("""
@@ -117,15 +138,51 @@ def init_db():
             pct INTEGER
         )
     """)
-    c.execute("INSERT OR IGNORE INTO courses VALUES ('gringo', 'Gringo Academy (Método Inmersivo)', 1, 130, 'Paso 1: Vocabulario en contexto', ?)", (str(datetime.now().date()),))
-    c.execute("INSERT OR IGNORE INTO courses VALUES ('neural', 'Inglés Práctico (Activación Neural - 12 Semanas)', 1, 12, 'Semana 1', ?)", (str(datetime.now().date()),))
+    
+    # Cursos iniciales con enlace directo
+    c.execute("INSERT OR REPLACE INTO courses VALUES ('gringo', 'Gringo Academy (Método Inmersivo)', 1, 130, 'Paso 1: Vocabulario en contexto', ?, 'https://consumer.hotmart.com')", (str(datetime.now().date()),))
+    c.execute("INSERT OR REPLACE INTO courses VALUES ('neural', 'Inglés Práctico (Activación Neural - 12 Semanas)', 1, 12, 'Semana 1', ?, 'https://consumer.hotmart.com')", (str(datetime.now().date()),))
+    
+    # Semillas de Flashcards desde A0 hasta C2 si la base de datos está vacía o incompleta
+    cards_seed = [
+        ("A0", "Saludos", "I am 38 years old", "Tengo 38 años (En inglés la edad se ES, no se 'tiene')"),
+        ("A0", "Básicos", "Where are you from?", "¿De dónde eres?"),
+        ("A1", "Rutina", "I wake up at 7:00 AM every morning", "Me despierto a las 7:00 AM todas las mañanas"),
+        ("A1", "Verbos", "She doesn't like spicy food", "A ella no le gusta la comida picante (Uso de doesn't)"),
+        ("A2", "Pasado", "I went to the salon yesterday afternoon", "Fui al salón ayer por la tarde (went = pasado de go)"),
+        ("A2", "Planes", "We are going to travel next month", "Vamos a viajar el próximo mes"),
+        ("B1", "Condicionales", "If I have time, I will finish the report", "Si tengo tiempo, terminaré el reporte (Primer condicional)"),
+        ("B1", "Experiencias", "I have lived here for five years", "He vivido aquí durante cinco años (Present Perfect)"),
+        ("B2", "Fluidez Profesional", "Despite the tight deadline, we managed to deliver", "A pesar de la fecha límite ajustada, logramos entregar"),
+        ("B2", "Collocations", "To reach a compromise", "Llegar a un acuerdo mutuo"),
+        ("C1", "Estructuras Avanzadas", "Seldom have I seen such dedication to mastery", "Rara vez he visto tal dedicación a la maestría (Inversión gramatical)"),
+        ("C1", "Vocabulario Preciso", "The plan was thoroughly scrutinized", "El plan fue examinado minuciosamente"),
+        ("C2", "Expresiones Idiomáticas y Matices", "To cut corners without compromising integrity", "Tomar atajos sin comprometer la integridad"),
+        ("C2", "Maestría Nativa", "An unassuming yet quintessential approach", "Un enfoque sin pretensiones pero esencialmente representativo")
+    ]
+    for lvl, cat, fr, bk in cards_seed:
+        c.execute("INSERT OR IGNORE INTO flashcards (level, category, front, back) SELECT ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM flashcards WHERE front = ?)", (lvl, cat, fr, bk, fr))
+        
+    # Semillas de Quizzes desde A0 hasta C2
+    quiz_seed = [
+        ("A0", "Edad", "Choose the correct sentence for age:", "I have 30 years", "I am 30 years old", "I am having 30 years", "I got 30 years", "I am 30 years old", "En inglés se utiliza el verbo To Be para expresar la edad."),
+        ("A1", "Presente", "He _____ coffee every morning.", "drink", "drinks", "drinking", "is drink", "drinks", "En tercera persona singular (he/she/it) en presente simple se añade -s."),
+        ("A2", "Pasado Simple", "Yesterday, we _____ to a new Italian restaurant.", "go", "gone", "went", "going", "went", "El pasado simple irregular del verbo 'go' es 'went'."),
+        ("B1", "Present Perfect", "She has _____ in London since 2021.", "live", "lives", "lived", "living", "lived", "El Present Perfect se compone de have/has + participio pasado (lived)."),
+        ("B2", "Voz Pasiva", "The new project _____ by the committee next week.", "will approve", "will be approved", "is approving", "approves", "will be approved", "Estructura de futuro pasivo: will + be + participio."),
+        ("C1", "Inversión", "Hardly _____ the house when the storm began.", "I had left", "had I left", "I did leave", "did I left", "had I left", "Con adverbios negativos al inicio (Hardly, Scarcely) se invierte el auxiliar: had + sujeto + participio."),
+        ("C2", "Precisión Léxica", "His argument was so _____ that no one could refute it.", "persuasive", "cogent", "believable", "plausible", "cogent", "'Cogent' connota un argumento claro, lógico, fundamentado y prácticamente irrefutable.")
+    ]
+    for q_lvl, q_cat, q_txt, o1, o2, o3, o4, cor, exp in quiz_seed:
+        c.execute("INSERT OR IGNORE INTO quizzes (level, category, question, op1, op2, op3, op4, correct, explanation) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM quizzes WHERE question = ?)", (q_lvl, q_cat, q_txt, o1, o2, o3, o4, cor, exp, q_txt))
+
     conn.commit()
     conn.close()
 
 def get_courses():
     conn = sqlite3.connect("english_learning.db")
     c = conn.cursor()
-    c.execute("SELECT id, name, current_unit, total_units, current_step, last_study FROM courses")
+    c.execute("SELECT id, name, current_unit, total_units, current_step, last_study, platform_url FROM courses")
     data = c.fetchall()
     conn.close()
     return data
@@ -212,19 +269,11 @@ def save_quiz_score(level, score, total):
     conn.commit()
     conn.close()
 
-def get_quiz_history():
-    conn = sqlite3.connect("english_learning.db")
-    c = conn.cursor()
-    c.execute("SELECT date, level, score, total, pct FROM quiz_history ORDER BY id DESC LIMIT 5")
-    rows = c.fetchall()
-    conn.close()
-    return rows
-
 init_db()
 
-# ==========================================
-# 2. CONFIGURACIÓN Y ESTILOS
-# ==========================================
+# =========================================================
+# 2. CONFIGURACIÓN Y ESTILOS VISUALES MODERNOS
+# =========================================================
 st.set_page_config(
     page_title="English Mastery Hub | AI Edition",
     page_icon="⚡",
@@ -237,14 +286,15 @@ st.markdown("""
     <meta name="google" content="notranslate">
 </head>
 <style>
-    .block-container { padding-top: 2rem; padding-bottom: 2rem; }
+    .block-container { padding-top: 1.8rem; padding-bottom: 2rem; max-width: 1200px; }
     .glass-card {
-        background: linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.8) 100%);
-        border: 1px solid rgba(148, 163, 184, 0.15);
+        background: linear-gradient(135deg, rgba(30, 41, 59, 0.75) 0%, rgba(15, 23, 42, 0.85) 100%);
+        border: 1px solid rgba(148, 163, 184, 0.18);
         border-radius: 16px;
         padding: 1.5rem;
         margin-bottom: 1.2rem;
-        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.35);
+        backdrop-filter: blur(10px);
     }
     .card-title {
         font-size: 1.25rem;
@@ -254,9 +304,9 @@ st.markdown("""
     }
     .tag-badge {
         display: inline-block;
-        background: rgba(56, 189, 248, 0.15);
+        background: rgba(56, 189, 248, 0.18);
         color: #38BDF8;
-        border: 1px solid rgba(56, 189, 248, 0.3);
+        border: 1px solid rgba(56, 189, 248, 0.35);
         padding: 4px 12px;
         border-radius: 9999px;
         font-size: 0.8rem;
@@ -265,12 +315,12 @@ st.markdown("""
     }
     .flashcard-display {
         background: linear-gradient(145deg, #1E293B, #0F172A);
-        border: 1px solid #334155;
+        border: 1px solid #38BDF8;
         border-radius: 20px;
-        padding: 2.5rem 1.5rem;
+        padding: 2.8rem 1.5rem;
         text-align: center;
         margin: 1.5rem 0;
-        box-shadow: 0 15px 30px rgba(0,0,0,0.4);
+        box-shadow: 0 15px 35px rgba(56, 189, 248, 0.15);
     }
     div.stButton > button:first-child {
         border-radius: 10px;
@@ -282,12 +332,29 @@ st.markdown("""
         transform: translateY(-2px);
         box-shadow: 0 6px 15px rgba(56, 189, 248, 0.3);
     }
+    .btn-hotmart {
+        display: inline-block;
+        width: 100%;
+        text-align: center;
+        background: linear-gradient(135deg, #F97316 0%, #EA580C 100%);
+        color: white !important;
+        font-weight: 700;
+        padding: 12px 16px;
+        border-radius: 10px;
+        text-decoration: none;
+        box-shadow: 0 4px 12px rgba(234, 88, 12, 0.35);
+        margin-top: 8px;
+    }
+    .btn-hotmart:hover {
+        background: linear-gradient(135deg, #FB923C 0%, #F97316 100%);
+        transform: translateY(-1px);
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# ==========================================
+# =========================================================
 # 3. NAVEGACIÓN LATERAL
-# ==========================================
+# =========================================================
 st.sidebar.markdown("### ⚡ **English Mastery**")
 st.sidebar.caption("Ruta Integral: A0 ➔ C2")
 
@@ -313,10 +380,11 @@ st.sidebar.markdown(
     unsafe_allow_html=True
 )
 
-# ==========================================
+# =========================================================
 # 4. MÓDULOS DE LA APLICACIÓN
-# ==========================================
+# =========================================================
 
+# --- 1. POMODORO ---
 if menu == "⏱️ Focus & Pomodoro (15-20m)":
     st.markdown("## ⏱️ Sesión de Estudio Focalizado")
     c1, c2 = st.columns([1.2, 1])
@@ -331,9 +399,9 @@ if menu == "⏱️ Focus & Pomodoro (15-20m)":
         enfoque = st.selectbox("Área a trabajar:", [
             "Gringo Academy: Episodio / Telenovela",
             "Activación Neural: Audio e Inmersión Subconsciente",
-            "Flashcards: Repaso Espaciado y Memorización",
+            "Flashcards: Repaso Espaciado (Niveles A0 - C2)",
             "Quizzes & Evaluaciones de Nivel",
-            "Speaking Lab: Práctica Oral en Voz Alta"
+            "Speaking Lab: Práctica Oral con IA"
         ])
         if st.button("🔥 Iniciar y Registrar Sesión", use_container_width=True):
             log_session(tiempo_foco, enfoque)
@@ -350,10 +418,21 @@ if menu == "⏱️ Focus & Pomodoro (15-20m)":
             for s_date, s_min, s_focus in sesiones:
                 st.markdown(f"• **{s_min} min** — {s_focus} <span style='color:#64748B; font-size:0.8rem;'>({s_date})</span>", unsafe_allow_html=True)
 
+# --- 2. HUB DE CURSOS (HOTMART) ---
 elif menu == "🎬 Hub de Cursos (Hotmart)":
     st.markdown("## 🎬 Centro de Mando: Hotmart")
+    st.caption("Gestiona tu avance y entra directamente a ver tus lecciones en la plataforma oficial.")
+    
+    col_cta1, col_cta2 = st.columns([1, 1])
+    with col_cta1:
+        st.markdown('<a href="https://consumer.hotmart.com" target="_blank" class="btn-hotmart">🚀 Abrir Mis Cursos en Hotmart</a>', unsafe_allow_html=True)
+    with col_cta2:
+        st.markdown('<a href="https://app.hotmart.com" target="_blank" class="btn-hotmart" style="background: linear-gradient(135deg, #0284C7 0%, #0369A1 100%); box-shadow: 0 4px 12px rgba(2, 132, 199, 0.35);">📱 Hotmart Club Directo</a>', unsafe_allow_html=True)
+    
+    st.divider()
     courses = get_courses()
-    for cid, name, unit, total, step, last in courses:
+    for row in courses:
+        cid, name, unit, total, step, last = row[0], row[1], row[2], row[3], row[4], row[5]
         st.markdown(f"""
         <div class="glass-card">
             <span class="tag-badge">CURSO ACTIVO</span>
@@ -379,27 +458,138 @@ elif menu == "🎬 Hub de Cursos (Hotmart)":
             st.toast("Progreso actualizado")
             st.rerun()
 
+# --- 3. RUTA DE HITOS (TEMARIO COMPLETO A0 A C2) ---
 elif menu == "🗺️ Ruta de Hitos (A0 a C2)":
-    st.markdown("## 🗺️ Mapa de Competencias: Nivel 0 al C2")
-    tab1, tab2 = st.tabs(["🟢 Fundamentos (A0 - A1)", "🎯 Titulación (A2 - B1)"])
-    with tab1:
-        st.info("Objetivo: Interiorizar estructuras automáticas sin traducir mentalmente palabra por palabra.")
-    with tab2:
-        st.success("Objetivo: Certificación Universitaria y dominio funcional de tiempos pasados y modales.")
+    st.markdown("## 🗺️ Mapa Curricular y Temario: Del Nivel 0 a Nativo")
+    st.caption("Guía de objetivos, gramática y vocabulario indispensable en cada escalón del Marco Común Europeo.")
 
+    tabs = st.tabs([
+        "🟢 A0: Starter",
+        "🌱 A1: Elemental",
+        "🌿 A2: Pre-Intermedio",
+        "🔷 B1: Intermedio",
+        "💎 B2: Avanzado Fluido",
+        "🏆 C1: Profesional",
+        "👑 C2: Maestría Nativa"
+    ])
+
+    with tabs[0]:
+        st.markdown("""
+        <div class="glass-card">
+            <span class="tag-badge">NIVEL A0: PRIMEROS PASOS</span>
+            <div class="card-title">Fundamentos Absolutos</div>
+            <p><strong>Meta:</strong> Eliminar el bloqueo inicial y pronunciar frases clave sin traducir mentalmente.</p>
+            <ul>
+                <li><strong>Gramática clave:</strong> Verbo To Be (afirmación, negación, pregunta), pronombres personales, adjetivos posesivos (my, your, her, his).</li>
+                <li><strong>Expresiones fijas:</strong> Edad (I am ... years old), presentación (I am from...), números y alfabeto en deletreo.</li>
+                <li><strong>Hito evaluable:</strong> Presentarte a ti misma, decir tu profesión, origen y edad con pronunciación fluida.</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with tabs[1]:
+        st.markdown("""
+        <div class="glass-card">
+            <span class="tag-badge">NIVEL A1: ELEMENTAL</span>
+            <div class="card-title">Rutinas y Entorno Cotidiano</div>
+            <p><strong>Meta:</strong> Hablar sobre hábitos diarios, gustos, familia y ubicaciones básicas.</p>
+            <ul>
+                <li><strong>Gramática clave:</strong> Presente Simple (regla de tercera persona -s/-es), auxiliares <em>do / does / don't / doesn't</em>, preposiciones de tiempo y lugar (in, on, at).</li>
+                <li><strong>Vocabulario:</strong> Comida, compras, horas, miembros de la familia y actividades de ocio.</li>
+                <li><strong>Hito evaluable:</strong> Describir tu día típico de la mañana a la noche sin titubeos gramaticales.</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with tabs[2]:
+        st.markdown("""
+        <div class="glass-card">
+            <span class="tag-badge">NIVEL A2: PRE-INTERMEDIO</span>
+            <div class="card-title">Pasado, Planes y Experiencias Inmediatas</div>
+            <p><strong>Meta:</strong> Narrar eventos del día anterior o vacaciones y coordinar citas o viajes.</p>
+            <ul>
+                <li><strong>Gramática clave:</strong> Pasado Simple (verbos regulares -ed y los 50 irregulares más comunes), pasado continuo (was/were doing), futuro con <em>going to</em> vs <em>will</em>.</li>
+                <li><strong>Vocabulario:</strong> Viajes, hoteles, direcciones, citas en el calendario y compras en tiendas.</li>
+                <li><strong>Hito evaluable:</strong> Contar qué hiciste el fin de semana pasado y qué harás el próximo mes.</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with tabs[3]:
+        st.markdown("""
+        <div class="glass-card">
+            <span class="tag-badge">NIVEL B1: INTERMEDIO INDEPENDIENTE</span>
+            <div class="card-title">Certificación Universitaria y Autonomía</div>
+            <p><strong>Meta:</strong> Resolver imprevistos en viajes, argumentar opiniones y redactar correos de trabajo funcionales.</p>
+            <ul>
+                <li><strong>Gramática clave:</strong> Present Perfect (con <em>already, yet, just, since, for</em>), primer y segundo condicional (if + would), verbos modales de obligación y consejo (must, should, have to).</li>
+                <li><strong>Vocabulario:</strong> Expresión de opiniones, acuerdos, desacuerdos y descripción de planes futuros condicionales.</li>
+                <li><strong>Hito evaluable:</strong> Mantener una conversación de 15 minutos explicando tus metas académicas o de negocio.</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with tabs[4]:
+        st.markdown("""
+        <div class="glass-card">
+            <span class="tag-badge">NIVEL B2: INTERMEDIO ALTO</span>
+            <div class="card-title">Fluidez Profesional y Técnica</div>
+            <p><strong>Meta:</strong> Participar en reuniones de trabajo internacionales, debates y entender podcasts nativos sin subtítulos.</p>
+            <ul>
+                <li><strong>Gramática clave:</strong> Tercer condicional y mixtos, voz pasiva avanzada, verbos modales de deducción en pasado (must have been, could have done), phrasal verbs frecuentes.</li>
+                <li><strong>Vocabulario:</strong> Negocios, tecnología, atención al cliente y gestión de proyectos.</li>
+                <li><strong>Hito evaluable:</strong> Explicar un proceso técnico o defender una postura en un debate sin traducir mentalmente.</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with tabs[5]:
+        st.markdown("""
+        <div class="glass-card">
+            <span class="tag-badge">NIVEL C1: EFICACIA OPERATIVA AVANZADA</span>
+            <div class="card-title">Dominio Académico y Especializado</div>
+            <p><strong>Meta:</strong> Leer artículos de investigación, escribir ensayos estructurados y hablar con matices estilísticos.</p>
+            <ul>
+                <li><strong>Gramática clave:</strong> Inversión enfática (<em>Rarely had I seen...</em>), estructuras con subjuntivo, cláusulas de participio y conectores discursivos sofisticados (<em>nevertheless, notwithstanding, whereas</em>).</li>
+                <li><strong>Vocabulario:</strong> Jerga clínica, terminología de UX/negocios y sutilezas retóricas.</li>
+                <li><strong>Hito evaluable:</strong> Diseñar y presentar un pitch completo en inglés técnico.</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with tabs[6]:
+        st.markdown("""
+        <div class="glass-card">
+            <span class="tag-badge">NIVEL C2: MAESTRÍA NATIVA</span>
+            <div class="card-title">Bilingüismo Completo y Espontaneidad</div>
+            <p><strong>Meta:</strong> Comprender ironías, modismos culturales sutiles, dobles sentidos y expresarse con total naturalidad.</p>
+            <ul>
+                <li><strong>Gramática y estilo:</strong> Máxima flexibilidad sintáctica, modismos idiomáticos contemporáneos y control absoluto del tono.</li>
+                <li><strong>Hito evaluable:</strong> Liderar entrevistas, debates improvisados o conferencias al mismo nivel que un orador nativo educado.</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+
+# --- 4. SMART FLASHCARDS ---
 elif menu == "🗂️ Flashcards Activas":
     st.markdown("## 🗂️ Smart Flashcards & Retención Activa")
+    st.caption("Repaso espaciado con todos los niveles desde A0 hasta C2.")
+    
+    niveles_disponibles = ["A0", "A1", "A2", "B1", "B2", "C1", "C2", "Todos"]
     c_lvl, c_flt = st.columns([2, 2])
     with c_lvl:
-        nivel_sel = st.selectbox("Nivel de estudio:", ["A0", "A1", "A2", "B1", "Todos"], index=0)
+        nivel_sel = st.selectbox("Nivel de estudio:", niveles_disponibles, index=0)
     with c_flt:
         filtro_vista = st.selectbox("Ver tarjetas:", ["Todas", "Solo Pendientes", "Solo Dominadas"], index=0)
+        
     deck = get_flashcards(nivel_sel, filtro_vista)
     total_nivel = len(get_flashcards(nivel_sel, "Todas"))
     dominadas_nivel = len(get_flashcards(nivel_sel, "Solo Dominadas"))
     pct = int((dominadas_nivel / total_nivel) * 100) if total_nivel > 0 else 0
+    
     st.progress(pct / 100)
-    st.caption(f"🏆 Dominadas en {nivel_sel}: **{dominadas_nivel} de {total_nivel}** ({pct}%)")
+    st.caption(f"🏆 Dominadas en **{nivel_sel}**: **{dominadas_nivel} de {total_nivel}** ({pct}%)")
+    
     if deck:
         if "f_idx" not in st.session_state:
             st.session_state.f_idx = 0
@@ -407,21 +597,26 @@ elif menu == "🗂️ Flashcards Activas":
             st.session_state.f_flip = False
         card = deck[st.session_state.f_idx % len(deck)]
         card_id, card_lvl, card_cat, card_front, card_back, is_mastered = card
+        
         st.markdown(f"""
         <div class="flashcard-display">
-            <h2 style="color: #38BDF8; font-size: 2rem; margin: 0;">{card_front}</h2>
+            <span class="tag-badge">{card_lvl} • {card_cat}</span>
+            <h2 style="color: #38BDF8; font-size: 2.1rem; margin: 15px 0 0 0;">{card_front}</h2>
         </div>
         """, unsafe_allow_html=True)
+        
         if st.session_state.f_flip:
             st.success(f"💡 {card_back}")
+            
         b1, b2 = st.columns(2)
-        if b1.button("👁️ Revelar", use_container_width=True):
+        if b1.button("👁️ Revelar Significado", use_container_width=True):
             st.session_state.f_flip = True
             st.rerun()
-        if b2.button("➡️ Siguiente", use_container_width=True):
+        if b2.button("➡️ Siguiente Tarjeta", use_container_width=True):
             st.session_state.f_idx += 1
             st.session_state.f_flip = False
             st.rerun()
+            
         c_f, c_p = st.columns(2)
         if c_f.button("❌ Repasar más", use_container_width=True):
             update_card_mastery(card_id, 0)
@@ -433,46 +628,60 @@ elif menu == "🗂️ Flashcards Activas":
             st.session_state.f_idx += 1
             st.session_state.f_flip = False
             st.rerun()
+    else:
+        st.info(f"No hay tarjetas con el filtro actual para el nivel {nivel_sel}.")
 
+# --- 5. QUIZZES & EVALUACIONES ---
 elif menu == "📝 Quizzes & Evaluaciones":
     st.markdown("## 📝 Centro de Evaluaciones y Tests")
+    st.caption("Comprueba tus conocimientos gramaticales y vocabulario por nivel.")
+    
+    niveles_quiz = ["A0", "A1", "A2", "B1", "B2", "C1", "C2"]
     col1, col2 = st.columns([1.5, 1])
     with col1:
-        nivel_q = st.selectbox("Selecciona Nivel a Evaluar:", ["A0", "A1", "A2", "B1"], index=0)
+        nivel_q = st.selectbox("Selecciona Nivel a Evaluar:", niveles_quiz, index=0)
     with col2:
-        cant_q = st.selectbox("Cantidad de preguntas:", [10, 25], index=0)
-    if st.button("🚀 Iniciar Ronda", use_container_width=True):
+        cant_q = st.selectbox("Cantidad de preguntas:", [5, 10], index=0)
+        
+    if st.button("🚀 Iniciar Ronda de Test", use_container_width=True):
         st.session_state.preguntas_activas = get_quiz_questions(nivel_q, cant_q)
         st.session_state.quiz_evaluado = False
         st.rerun()
+        
     if "preguntas_activas" in st.session_state and st.session_state.preguntas_activas:
         with st.form("quiz_form"):
             user_answers = {}
             for i, item in enumerate(st.session_state.preguntas_activas):
                 qid, qlvl, qcat, qtext, op1, op2, op3, op4, corr, expl = item
-                st.markdown(f"**{i+1}. {qtext}**")
+                st.markdown(f"**{i+1}. {qtext}** *(Tema: {qcat})*")
                 user_answers[qid] = st.radio(f"P{i+1}", [op1, op2, op3, op4], key=f"ans_{qid}", label_visibility="collapsed", index=None)
-            if st.form_submit_button("🏁 Calificar Ronda"):
+            if st.form_submit_button("🏁 Calificar Evaluación"):
                 score = sum(1 for item in st.session_state.preguntas_activas if user_answers.get(item[0]) == item[8])
                 save_quiz_score(nivel_q, score, len(st.session_state.preguntas_activas))
                 st.session_state.quiz_evaluado = True
                 st.session_state.ultimo_score = (score, len(st.session_state.preguntas_activas), nivel_q)
                 st.rerun()
+                
     if st.session_state.get("quiz_evaluado", False):
         p, t, lvl = st.session_state.ultimo_score
-        st.success(f"🏆 Resultado: **{p} de {t}** aciertos en {lvl}.")
+        st.markdown(f"""
+        <div class="glass-card">
+            <span class="tag-badge">RESULTADO DE LA EVALUACIÓN</span>
+            <div class="card-title">Nivel {lvl}: {p} de {t} aciertos ({int((p/t)*100)}%)</div>
+        </div>
+        """, unsafe_allow_html=True)
 
-# --- 6. SPEAKING & IA FEEDBACK LAB ---
+# --- 6. SPEAKING & FEEDBACK LAB ---
 elif menu == "🎙️ Speaking & Feedback Lab":
     st.markdown("## 🎙️ Speaking & Feedback con Inteligencia Artificial")
-    st.markdown("Practica tus respuestas orales o escritas y recibe corrección instantánea de un tutor nativo con IA.")
+    st.caption("Practica respuestas orales o escritas y recibe corrección instantánea de pronunciación, gramática y estilo nativo.")
 
     prompts = [
         "Introduce yourself: your name, where you live, and your age. (A0)",
-        "Describe your typical morning routine in 3 sentences. (A0/A1)",
-        "What do you enjoy doing on weekends? (A1)",
+        "Describe your typical morning routine in 3 sentences. (A1)",
         "What did you do yesterday afternoon? Mention 2 activities. (A2)",
-        "Explain why learning English will help you in your career. (B1)"
+        "Explain a difficult situation at work and how you handled it. (B1/B2)",
+        "Why is continuous learning essential for professional development? (C1/C2)"
     ]
     tema = st.selectbox("Elige tu reto de hoy:", prompts)
     st.info(f"🗣️ **Prompt de práctica:** \"{tema}\"")
@@ -485,8 +694,8 @@ elif menu == "🎙️ Speaking & Feedback Lab":
             if not user_text.strip():
                 st.warning("Escribe al menos una frase en inglés antes de analizar.")
             else:
-                with st.spinner("Tu tutora de IA está analizando tu gramática..."):
-                    retro = evaluate_speech_with_ai(tema, user_text)
+                with st.spinner("Tu tutora de IA está analizando tu respuesta..."):
+                    retro = evaluate_speech_with_ai(tema, user_text, is_spoken=False)
                     st.markdown("""
                     <div class="glass-card">
                         <span class="tag-badge">RETROALIMENTACIÓN PERSONALIZADA</span>
@@ -494,20 +703,22 @@ elif menu == "🎙️ Speaking & Feedback Lab":
                     st.markdown(retro)
                     st.markdown("</div>", unsafe_allow_html=True)
     else:
-        audio_grabado = st.audio_input("Presiona para grabar:")
+        st.markdown("#### 🎧 Grabación de Audio Directa")
+        audio_grabado = st.audio_input("Presiona para grabar tu pronunciación:")
         if audio_grabado:
             st.audio(audio_grabado)
-            st.success("¡Audio grabado! Escúchate con atención.")
-        speech_text = st.text_area("Borrador de lo que hablaste en voz alta:", placeholder="Escribe aquí lo que dijiste para que la IA lo califique...", height=100)
-        if st.button("🤖 Evaluar lo que dije con IA", use_container_width=True):
+            st.success("¡Audio grabado! Escucha tu entonación.")
+            
+        speech_text = st.text_area("Borrador o transcripción de lo que hablaste en voz alta:", placeholder="Escribe aquí lo que dijiste para que la IA evalúe la fonética y el contenido...", height=100)
+        if st.button("🤖 Evaluar Pronunciación y Contenido con IA", use_container_width=True):
             if not speech_text.strip():
-                st.warning("Escribe el texto de lo que hablaste para que la IA pueda corregirte.")
+                st.warning("Escribe el texto de lo que hablaste para que la IA pueda darte la corrección fonética y gramatical.")
             else:
-                with st.spinner("Tu tutora de IA está evaluando tu respuesta..."):
-                    retro = evaluate_speech_with_ai(tema, speech_text)
+                with st.spinner("Tu tutora de IA está evaluando tu respuesta oral y fonética..."):
+                    retro = evaluate_speech_with_ai(tema, speech_text, is_spoken=True)
                     st.markdown("""
                     <div class="glass-card">
-                        <span class="tag-badge">ANÁLISIS DE LO HABLADO</span>
+                        <span class="tag-badge">ANÁLISIS DE SPEAKING Y FONÉTICA</span>
                     """, unsafe_allow_html=True)
                     st.markdown(retro)
                     st.markdown("</div>", unsafe_allow_html=True)
