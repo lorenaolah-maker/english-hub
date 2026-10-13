@@ -2,6 +2,36 @@ import streamlit as st
 import sqlite3
 import random
 from datetime import datetime
+from google import genai
+
+# ==========================================
+# 0. CLIENTE DE INTELIGENCIA ARTIFICIAL
+# ==========================================
+api_key = st.secrets.get("GEMINI_API_KEY", None)
+ai_client = genai.Client(api_key=api_key) if api_key else None
+
+def evaluate_speech_with_ai(prompt_text, user_response):
+    if not ai_client:
+        return "⚠️ No se detectó la clave GEMINI_API_KEY en Secrets. Revisa la configuración."
+    try:
+        sys_prompt = f"""
+        Eres una tutora de inglés paciente, empática y rigurosa para una estudiante hispanohablante.
+        Reto asignado: "{prompt_text}"
+        Respuesta del estudiante: "{user_response}"
+
+        Analiza su respuesta y responde con este formato claro:
+        🎯 **Calificación:** [Puntaje de 1 a 10]/10
+        🔍 **Corrección Gramatical:** [Explica en español de forma súper clara los fallos. Si usó 'have' para la edad, aclara que en inglés la edad se es con 'am/is/are'].
+        ✨ **Cómo decirlo como nativo:** [Escribe la oración corregida y pulida en inglés].
+        💡 **Consejo de Oro:** [Un consejo práctico de vocabulario o pronunciación].
+        """
+        response = ai_client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=sys_prompt
+        )
+        return response.text
+    except Exception as e:
+        return f"Error al conectar con la IA: {str(e)}"
 
 # ==========================================
 # 1. BASE DE DATOS Y ESTRUCTURA DE PROGRESO
@@ -9,7 +39,6 @@ from datetime import datetime
 def init_db():
     conn = sqlite3.connect("english_learning.db")
     c = conn.cursor()
-    # Tablas existentes
     c.execute("""
         CREATE TABLE IF NOT EXISTS courses (
             id TEXT PRIMARY KEY,
@@ -28,7 +57,6 @@ def init_db():
             focus_area TEXT
         )
     """)
-    # Banco masivo de Flashcards y su progreso
     c.execute("""
         CREATE TABLE IF NOT EXISTS flashcards (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -46,7 +74,6 @@ def init_db():
             last_reviewed TEXT
         )
     """)
-    # Banco masivo de Quizzes e Historial de Exámenes
     c.execute("""
         CREATE TABLE IF NOT EXISTS quizzes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -71,8 +98,6 @@ def init_db():
             pct INTEGER
         )
     """)
-    
-    # Valores por defecto de cursos
     c.execute("INSERT OR IGNORE INTO courses VALUES ('gringo', 'Gringo Academy (Método Inmersivo)', 1, 130, 'Paso 1: Vocabulario en contexto', ?)", (str(datetime.now().date()),))
     c.execute("INSERT OR IGNORE INTO courses VALUES ('neural', 'Inglés Práctico (Activación Neural - 12 Semanas)', 1, 12, 'Semana 1', ?)", (str(datetime.now().date()),))
     conn.commit()
@@ -110,7 +135,6 @@ def get_recent_sessions():
     conn.close()
     return rows
 
-# Funciones de Flashcards
 def get_flashcards(level, filter_mode="Todas"):
     conn = sqlite3.connect("english_learning.db")
     c = conn.cursor()
@@ -129,7 +153,6 @@ def get_flashcards(level, filter_mode="Todas"):
         """, (level,))
     rows = c.fetchall()
     conn.close()
-    
     if filter_mode == "Solo Pendientes":
         return [r for r in rows if r[5] == 0]
     elif filter_mode == "Solo Dominadas":
@@ -150,7 +173,6 @@ def update_card_mastery(card_id, mastered):
     conn.commit()
     conn.close()
 
-# Funciones de Quizzes
 def get_quiz_questions(level, limit=10):
     conn = sqlite3.connect("english_learning.db")
     c = conn.cursor()
@@ -185,7 +207,7 @@ init_db()
 # 2. CONFIGURACIÓN Y ESTILOS
 # ==========================================
 st.set_page_config(
-    page_title="English Mastery Hub | Pro Edition",
+    page_title="English Mastery Hub | AI Edition",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -258,7 +280,7 @@ menu = st.sidebar.radio(
         "🗺️ Ruta de Hitos (A0 a C2)",
         "🗂️ Flashcards Activas",
         "📝 Quizzes & Evaluaciones",
-        "🎙️ Speaking Lab"
+        "🎙️ Speaking & Feedback Lab"
     ]
 )
 
@@ -376,9 +398,9 @@ elif menu == "🗺️ Ruta de Hitos (A0 a C2)":
             <div class="card-title">Fundamentos y Despegue</div>
             <p style="color:#94A3B8;">El objetivo es interiorizar estructuras automáticas sin traducir mentalmente palabra por palabra.</p>
             <ul>
-                <li><b>Gramática Clave:</b> Pronombres personales, Verbo To Be, Present Simple (regla de tercera persona con -s/-es).</li>
+                <li><b>Gramática Clave:</b> Pronombres personales, Verbo To Be, Present Simple.</li>
                 <li><b>Preguntas funcionales:</b> Estructura con <i>Do / Does / Where / What</i>.</li>
-                <li><b>Vocabulario funcional:</b> Saludos formales/informales, profesiones, días, meses y números.</li>
+                <li><b>Vocabulario:</b> Saludos, profesiones, días, números y compras.</li>
             </ul>
         </div>
         """, unsafe_allow_html=True)
@@ -389,8 +411,8 @@ elif menu == "🗺️ Ruta de Hitos (A0 a C2)":
             <p style="color:#94A3B8;">Competencia requerida para exámenes de titulación.</p>
             <ul>
                 <li><b>Pasado Simple:</b> Verbos regulares (-ed) y verbos irregulares frecuentes.</li>
-                <li><b>Present Continuous vs. Simple:</b> Distinguir rutinas del momento presente.</li>
-                <li><b>Modales:</b> <i>Can / Could / Should / Must</i>.</li>
+                <li><b>Present Continuous:</b> Acciones en el momento.</li>
+                <li><b>Modales:</b> <i>Can / Could / Should</i>.</li>
             </ul>
         </div>
         """, unsafe_allow_html=True)
@@ -408,24 +430,16 @@ elif menu == "🗺️ Ruta de Hitos (A0 a C2)":
         </div>
         """, unsafe_allow_html=True)
 
-# --- 4. FLASHCARDS CON PROGRESO Y PERSISTENCIA ---
+# --- 4. FLASHCARDS CON PROGRESO ---
 elif menu == "🗂️ Flashcards Activas":
     st.markdown("## 🗂️ Smart Flashcards & Retención Activa")
     st.caption("Marca las que ya dominas para llevar tu métrica real de aprendizaje.")
 
     c_lvl, c_flt = st.columns([2, 2])
     with c_lvl:
-        nivel_sel = st.selectbox(
-            "Nivel de estudio:",
-            ["A0", "A1", "A2", "B1", "Todos"],
-            index=0
-        )
+        nivel_sel = st.selectbox("Nivel de estudio:", ["A0", "A1", "A2", "B1", "Todos"], index=0)
     with c_flt:
-        filtro_vista = st.selectbox(
-            "Ver tarjetas:",
-            ["Todas", "Solo Pendientes", "Solo Dominadas"],
-            index=0
-        )
+        filtro_vista = st.selectbox("Ver tarjetas:", ["Todas", "Solo Pendientes", "Solo Dominadas"], index=0)
 
     deck = get_flashcards(nivel_sel, filtro_vista)
     total_nivel = len(get_flashcards(nivel_sel, "Todas"))
@@ -436,7 +450,7 @@ elif menu == "🗂️ Flashcards Activas":
     st.caption(f"🏆 Dominadas en {nivel_sel}: **{dominadas_nivel} de {total_nivel}** ({porcentaje}%)")
 
     if not deck:
-        st.info(f"No hay tarjetas en esta vista. Si acabas de iniciar, ¡inyectaremos el banco masivo en el Paso 2!")
+        st.info("No hay tarjetas con ese filtro actualmente.")
     else:
         if "f_idx" not in st.session_state:
             st.session_state.f_idx = 0
@@ -473,7 +487,6 @@ elif menu == "🗂️ Flashcards Activas":
                 st.session_state.f_flip = False
                 st.rerun()
 
-        # Botones de Autoevaluación
         st.markdown("#### ¿Cómo te fue con esta frase?")
         c_fail, c_pass = st.columns(2)
         with c_fail:
@@ -491,7 +504,7 @@ elif menu == "🗂️ Flashcards Activas":
                 st.toast("¡Excelente! Sumada a tus tarjetas dominadas 🎉")
                 st.rerun()
 
-# --- 5. QUIZZES CON EVALUACIÓN Y HISTORIAL ---
+# --- 5. QUIZZES CON EVALUACIÓN ---
 elif menu == "📝 Quizzes & Evaluaciones":
     st.markdown("## 📝 Centro de Evaluaciones y Tests")
     st.caption("Ponte a prueba con rondas de preguntas dinámicas y guarda tu puntuación.")
@@ -546,7 +559,6 @@ elif menu == "📝 Quizzes & Evaluaciones":
         else:
             st.warning(f"✍️ Calificación: **{p} de {t}** ({pct}%). Continúa practicando con las Flashcards.")
 
-    # Historial de exámenes
     st.markdown("### 📊 Historial de Exámenes Guardados")
     historial = get_quiz_history()
     if historial:
@@ -555,33 +567,58 @@ elif menu == "📝 Quizzes & Evaluaciones":
     else:
         st.caption("Aún no has completado evaluaciones. Inicia una arriba.")
 
-# --- 6. SPEAKING LAB ---
-elif menu == "🎙️ Speaking Lab":
-    st.markdown("## 🎙️ Speaking & Writing Lab")
-    st.markdown("Entrena tu fluidez en inglés grabando tu voz o redactando tu respuesta diaria.")
+# --- 6. SPEAKING & RETROALIMENTACIÓN CON IA ---
+elif menu == "🎙️ Speaking & Feedback Lab":
+    st.markdown("## 🎙️ Speaking & Feedback con Inteligencia Artificial")
+    st.markdown("Practica tus respuestas orales o escritas y recibe corrección instantánea de un tutor nativo con IA.")
 
     prompts = [
+        "Introduce yourself: your name, where you live, and your age. (A0)",
         "Describe your typical morning routine in 3 sentences. (A0/A1)",
-        "Introduce yourself: your name, where you live and what you do. (A0)",
-        "What did you do last weekend? Mention 2 activities. (A2)",
-        "Explain why learning English will help your career. (B1)"
+        "What do you enjoy doing on weekends? (A1)",
+        "What did you do yesterday afternoon? Mention 2 activities. (A2)",
+        "Explain why learning English will help you in your career. (B1)"
     ]
     tema = st.selectbox("Elige tu reto de hoy:", prompts)
     st.info(f"🗣️ **Prompt de práctica:** \"{tema}\"")
 
-    modo = st.radio("Modalidad de práctica:", ["🎙️ Hablado (Micrófono)", "✍️ Escrito (Borrador)"], horizontal=True)
+    modo = st.radio("Modalidad de práctica:", ["✍️ Escrito (Corrección Inmediata con IA)", "🎙️ Hablado (Grabación y Práctica de Voz)"], horizontal=True)
 
-    if modo == "🎙️ Hablado (Micrófono)":
-        st.markdown("**1. Presiona el micrófono y responde en inglés:**")
-        audio_grabado = st.audio_input("Grábate aquí:")
+    if modo == "✍️ Escrito (Corrección Inmediata con IA)":
+        st.markdown("**Escribe tu respuesta en inglés:**")
+        user_text = st.text_area("Tu respuesta:", placeholder="I am Lorena and I am 38 years old...", height=120)
+
+        if st.button("🤖 Analizar y Corregir con IA", use_container_width=True):
+            if not user_text.strip():
+                st.warning("Escribe al menos una frase en inglés antes de analizar.")
+            else:
+                with st.spinner("Tu tutor de IA está evaluando tu gramática y estilo..."):
+                    retro = evaluate_speech_with_ai(tema, user_text)
+                    st.markdown("""
+                    <div class="glass-card">
+                        <span class="tag-badge">RETROALIMENTACIÓN PERSONALIZADA</span>
+                    """, unsafe_allow_html=True)
+                    st.markdown(retro)
+                    st.markdown("</div>", unsafe_allow_html=True)
+
+    else:
+        st.markdown("**Grábate respondiendo en voz alta:**")
+        audio_grabado = st.audio_input("Presiona para grabar:")
         if audio_grabado:
             st.audio(audio_grabado)
-            st.success("¡Audio capturado con éxito! Escúchate con atención.")
-            st.info("💡 **Consejo:** Fíjate si la terminación de cada palabra sonó clara y sin pausas largas.")
-    else:
-        speech_text = st.text_area("Escribe tu respuesta:", placeholder="In the morning I usually...")
-        if st.button("Guardar Borrador", use_container_width=True):
-            if speech_text.strip():
-                st.success("¡Respuesta guardada con éxito!")
+            st.success("¡Audio grabado! Escúchate para notar tu entonación.")
+        
+        st.markdown("**Escribe lo que dijiste para que la IA lo califique:**")
+        speech_text = st.text_area("Borrador de lo que hablaste:", placeholder="I said: First I wake up early...", height=100)
+        if st.button("🤖 Evaluar lo que dije con IA", use_container_width=True):
+            if not speech_text.strip():
+                st.warning("Escribe el texto de tu audio para que la IA pueda corregirte.")
             else:
-                st.warning("Escribe al menos una frase.")
+                with st.spinner("Evaluando fluidez y vocabulario..."):
+                    retro = evaluate_speech_with_ai(tema, speech_text)
+                    st.markdown("""
+                    <div class="glass-card">
+                        <span class="tag-badge">ANÁLISIS DE LO HABLADO</span>
+                    """, unsafe_allow_html=True)
+                    st.markdown(retro)
+                    st.markdown("</div>", unsafe_allow_html=True)
