@@ -1,35 +1,55 @@
 import streamlit as st
 import sqlite3
 import random
+import json
+import urllib.request
 from datetime import datetime
-from google import genai
 
 # ==========================================
-# 0. CLIENTE DE INTELIGENCIA ARTIFICIAL
+# 0. CLIENTE DE INTELIGENCIA ARTIFICIAL DIRECTO
 # ==========================================
-api_key = st.secrets.get("GEMINI_API_KEY", None)
-ai_client = genai.Client(api_key=api_key) if api_key else None
-
 def evaluate_speech_with_ai(prompt_text, user_response):
-    if not ai_client:
-        return "⚠️ No se detectó la clave GEMINI_API_KEY en Secrets. Revisa la configuración."
-    try:
-        sys_prompt = f"""
-        Eres una tutora de inglés paciente, empática y rigurosa para una estudiante hispanohablante.
-        Reto asignado: "{prompt_text}"
-        Respuesta del estudiante: "{user_response}"
+    api_key = st.secrets.get("GEMINI_API_KEY", "").strip()
+    if not api_key:
+        return "⚠️ Configura GEMINI_API_KEY en Secrets para activar la retroalimentación."
+    
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+    
+    sys_prompt = f"""
+    Eres una tutora de inglés empática, amigable y muy clara para una estudiante hispanohablante.
+    Reto asignado: "{prompt_text}"
+    Respuesta de la estudiante: "{user_response}"
 
-        Analiza su respuesta y responde con este formato claro:
-        🎯 **Calificación:** [Puntaje de 1 a 10]/10
-        🔍 **Corrección Gramatical:** [Explica en español de forma súper clara los fallos. Si usó 'have' para la edad, aclara que en inglés la edad se es con 'am/is/are'].
-        ✨ **Cómo decirlo como nativo:** [Escribe la oración corregida y pulida en inglés].
-        💡 **Consejo de Oro:** [Un consejo práctico de vocabulario o pronunciación].
-        """
-        response = ai_client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=sys_prompt
-        )
-        return response.text
+    Evalúa su respuesta y entrega tu análisis con este formato exacto:
+    🎯 **Calificación:** [Puntaje de 1 a 10]/10
+    🔍 **Corrección Gramatical:** [Explica en español claro los errores cometidos. Si usó 'have' para la edad, explica por qué en inglés se usa el verbo To Be].
+    ✨ **Cómo decirlo como nativo:** [Escribe la oración corregida y pulida en inglés para que la repita].
+    💡 **Consejo de Oro:** [Un consejo práctico de pronunciación o estructura].
+    """
+    
+    payload = {
+        "contents": [
+            {
+                "parts": [
+                    {"text": sys_prompt}
+                ]
+            }
+        ]
+    }
+    
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=data,
+        headers={"Content-Type": "application/json"}
+    )
+    
+    try:
+        with urllib.request.urlopen(req, timeout=15) as response:
+            res_json = json.loads(response.read().decode("utf-8"))
+            candidate = res_json.get("candidates", [{}])[0]
+            parts = candidate.get("content", {}).get("parts", [{}])
+            return parts[0].get("text", "No se recibió respuesta del modelo.")
     except Exception as e:
         return f"Error al conectar con la IA: {str(e)}"
 
@@ -298,11 +318,8 @@ st.sidebar.markdown(
 # 4. MÓDULOS DE LA APLICACIÓN
 # ==========================================
 
-# --- 1. FOCUS & POMODORO ---
 if menu == "⏱️ Focus & Pomodoro (15-20m)":
     st.markdown("## ⏱️ Sesión de Estudio Focalizado")
-    st.markdown("Diseñado para la regla de oro: **15 a 20 minutos de inmersión diaria** sin distracciones.")
-
     c1, c2 = st.columns([1.2, 1])
     with c1:
         st.markdown("""
@@ -311,7 +328,6 @@ if menu == "⏱️ Focus & Pomodoro (15-20m)":
             <div class="card-title">Configurar bloque de hoy</div>
         </div>
         """, unsafe_allow_html=True)
-
         tiempo_foco = st.select_slider("Duración de la sesión:", options=[5, 10, 15, 20, 25, 30], value=15)
         enfoque = st.selectbox("Área a trabajar:", [
             "Gringo Academy: Episodio / Telenovela",
@@ -320,11 +336,9 @@ if menu == "⏱️ Focus & Pomodoro (15-20m)":
             "Quizzes & Evaluaciones de Nivel",
             "Speaking Lab: Práctica Oral en Voz Alta"
         ])
-
         if st.button("🔥 Iniciar y Registrar Sesión", use_container_width=True):
             log_session(tiempo_foco, enfoque)
-            st.success(f"¡Sesión de **{tiempo_foco} min** guardada con éxito! Enfoque: {enfoque}.")
-
+            st.success(f"¡Sesión de **{tiempo_foco} min** guardada con éxito!")
     with c2:
         st.markdown("""
         <div class="glass-card">
@@ -332,19 +346,13 @@ if menu == "⏱️ Focus & Pomodoro (15-20m)":
             <div class="card-title">Últimas sesiones completadas</div>
         </div>
         """, unsafe_allow_html=True)
-
         sesiones = get_recent_sessions()
         if sesiones:
             for s_date, s_min, s_focus in sesiones:
                 st.markdown(f"• **{s_min} min** — {s_focus} <span style='color:#64748B; font-size:0.8rem;'>({s_date})</span>", unsafe_allow_html=True)
-        else:
-            st.caption("Aún no tienes sesiones registradas. ¡Inicia la primera hoy!")
 
-# --- 2. HUB DE CURSOS ---
 elif menu == "🎬 Hub de Cursos (Hotmart)":
     st.markdown("## 🎬 Centro de Mando: Hotmart")
-    st.markdown("Monitorea tu progreso sincronizado con el método de ambos programas.")
-
     courses = get_courses()
     for cid, name, unit, total, step, last in courses:
         st.markdown(f"""
@@ -353,21 +361,12 @@ elif menu == "🎬 Hub de Cursos (Hotmart)":
             <div class="card-title">{name}</div>
         </div>
         """, unsafe_allow_html=True)
-
         col_a, col_b, col_c = st.columns([2, 1.2, 1])
         pct = int((unit / total) * 100) if total > 0 else 0
-        
         col_a.progress(pct / 100)
         col_a.caption(f"Avance: **{unit} de {total}** ({pct}%) | Última sesión: {last}")
-
         if cid == "gringo":
-            pasos = [
-                "Paso 1: Vocabulario en contexto",
-                "Paso 2: Gramática esencial",
-                "Paso 3: Pronunciación nativa",
-                "Paso 4: Examen de Listening",
-                "Paso 5: Práctica de Speaking"
-            ]
+            pasos = ["Paso 1: Vocabulario en contexto", "Paso 2: Gramática esencial", "Paso 3: Pronunciación nativa", "Paso 4: Examen de Listening", "Paso 5: Práctica de Speaking"]
             idx_p = pasos.index(step) if step in pasos else 0
             nuevo_paso = col_b.selectbox("Fase actual:", pasos, index=idx_p, key=f"step_{cid}")
             nueva_unidad = col_c.number_input("Telenovela / Bloque:", min_value=1, max_value=total, value=unit, key=f"unit_{cid}")
@@ -376,198 +375,95 @@ elif menu == "🎬 Hub de Cursos (Hotmart)":
             idx_b = bloques.index(step) if step in bloques else 0
             nuevo_paso = col_b.selectbox("Semana actual:", bloques, index=idx_b, key=f"step_{cid}")
             nueva_unidad = col_c.number_input("Unidad completada:", min_value=1, max_value=12, value=unit, key=f"unit_{cid}")
+        if col_a.button(f"💾 Guardar {cid.capitalize()}", key=f"btn_{cid}"):
+            update_course(cid, nueva_unidad, nuevo_paso)
+            st.toast("Progreso actualizado")
+            st.rerun()
 
-        c_save, c_link = st.columns([1, 2])
-        with c_save:
-            if st.button(f"💾 Guardar {cid.capitalize()}", key=f"btn_{cid}", use_container_width=True):
-                update_course(cid, nueva_unidad, nuevo_paso)
-                st.toast("Progreso actualizado en base de datos")
-                st.rerun()
-        with c_link:
-            st.markdown(f"[🔗 Ir a Hotmart Club](https://consumer.hotmart.com)")
-        st.divider()
-
-# --- 3. RUTA POR NIVELES ---
 elif menu == "🗺️ Ruta de Hitos (A0 a C2)":
     st.markdown("## 🗺️ Mapa de Competencias: Nivel 0 al C2")
-    tab1, tab2, tab3, tab4 = st.tabs(["🟢 Nivel 0 / A1", "🎯 Nivel A2 (Titulación)", "🔵 Niveles B1 / B2", "🟣 Niveles C1 / C2"])
-    
+    tab1, tab2 = st.tabs(["🟢 Fundamentos (A0 - A1)", "🎯 Titulación (A2 - B1)"])
     with tab1:
-        st.markdown("""
-        <div class="glass-card">
-            <div class="card-title">Fundamentos y Despegue</div>
-            <p style="color:#94A3B8;">El objetivo es interiorizar estructuras automáticas sin traducir mentalmente palabra por palabra.</p>
-            <ul>
-                <li><b>Gramática Clave:</b> Pronombres personales, Verbo To Be, Present Simple.</li>
-                <li><b>Preguntas funcionales:</b> Estructura con <i>Do / Does / Where / What</i>.</li>
-                <li><b>Vocabulario:</b> Saludos, profesiones, días, números y compras.</li>
-            </ul>
-        </div>
-        """, unsafe_allow_html=True)
+        st.info("Objetivo: Interiorizar estructuras automáticas sin traducir mentalmente palabra por palabra.")
     with tab2:
-        st.markdown("""
-        <div class="glass-card">
-            <div class="card-title">Nivel A2: Certificación Universitaria</div>
-            <p style="color:#94A3B8;">Competencia requerida para exámenes de titulación.</p>
-            <ul>
-                <li><b>Pasado Simple:</b> Verbos regulares (-ed) y verbos irregulares frecuentes.</li>
-                <li><b>Present Continuous:</b> Acciones en el momento.</li>
-                <li><b>Modales:</b> <i>Can / Could / Should</i>.</li>
-            </ul>
-        </div>
-        """, unsafe_allow_html=True)
-    with tab3:
-        st.markdown("""
-        <div class="glass-card">
-            <div class="card-title">B1 - B2: Fluidez Profesional e Independencia</div>
-            <p style="color:#94A3B8;">Capacidad de mantener reuniones y conversaciones fluidas.</p>
-        </div>
-        """, unsafe_allow_html=True)
-    with tab4:
-        st.markdown("""
-        <div class="glass-card">
-            <div class="card-title">C1 - C2: Dominio Bilingüe Nativo</div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.success("Objetivo: Certificación Universitaria y dominio funcional de tiempos pasados y modales.")
 
-# --- 4. FLASHCARDS CON PROGRESO ---
 elif menu == "🗂️ Flashcards Activas":
     st.markdown("## 🗂️ Smart Flashcards & Retención Activa")
-    st.caption("Marca las que ya dominas para llevar tu métrica real de aprendizaje.")
-
     c_lvl, c_flt = st.columns([2, 2])
     with c_lvl:
         nivel_sel = st.selectbox("Nivel de estudio:", ["A0", "A1", "A2", "B1", "Todos"], index=0)
     with c_flt:
         filtro_vista = st.selectbox("Ver tarjetas:", ["Todas", "Solo Pendientes", "Solo Dominadas"], index=0)
-
     deck = get_flashcards(nivel_sel, filtro_vista)
     total_nivel = len(get_flashcards(nivel_sel, "Todas"))
     dominadas_nivel = len(get_flashcards(nivel_sel, "Solo Dominadas"))
-    porcentaje = int((dominadas_nivel / total_nivel) * 100) if total_nivel > 0 else 0
-
-    st.progress(porcentaje / 100)
-    st.caption(f"🏆 Dominadas en {nivel_sel}: **{dominadas_nivel} de {total_nivel}** ({porcentaje}%)")
-
-    if not deck:
-        st.info("No hay tarjetas con ese filtro actualmente.")
-    else:
+    pct = int((dominadas_nivel / total_nivel) * 100) if total_nivel > 0 else 0
+    st.progress(pct / 100)
+    st.caption(f"🏆 Dominadas en {nivel_sel}: **{dominadas_nivel} de {total_nivel}** ({pct}%)")
+    if deck:
         if "f_idx" not in st.session_state:
             st.session_state.f_idx = 0
         if "f_flip" not in st.session_state:
             st.session_state.f_flip = False
-
         card = deck[st.session_state.f_idx % len(deck)]
         card_id, card_lvl, card_cat, card_front, card_back, is_mastered = card
-
-        estado_txt = "✅ DOMINADA" if is_mastered == 1 else "⏳ EN APRENDIZAJE"
-        st.markdown(f"<span class='tag-badge'>{card_lvl} • {card_cat}</span> • <small style='color:#94A3B8;'>{estado_txt} (Tarjeta {st.session_state.f_idx % len(deck) + 1} de {len(deck)})</small>", unsafe_allow_html=True)
-
         st.markdown(f"""
         <div class="flashcard-display">
             <h2 style="color: #38BDF8; font-size: 2rem; margin: 0;">{card_front}</h2>
         </div>
         """, unsafe_allow_html=True)
-
         if st.session_state.f_flip:
-            st.markdown(f"""
-            <div style="background: rgba(16, 185, 129, 0.15); border: 1px solid #10B981; border-radius: 12px; padding: 1.2rem; text-align: center; margin-bottom: 1rem;">
-                <h3 style="color: #34D399; margin: 0;">💡 {card_back}</h3>
-            </div>
-            """, unsafe_allow_html=True)
+            st.success(f"💡 {card_back}")
+        b1, b2 = st.columns(2)
+        if b1.button("👁️ Revelar", use_container_width=True):
+            st.session_state.f_flip = True
+            st.rerun()
+        if b2.button("➡️ Siguiente", use_container_width=True):
+            st.session_state.f_idx += 1
+            st.session_state.f_flip = False
+            st.rerun()
+        c_f, c_p = st.columns(2)
+        if c_f.button("❌ Repasar más", use_container_width=True):
+            update_card_mastery(card_id, 0)
+            st.session_state.f_idx += 1
+            st.session_state.f_flip = False
+            st.rerun()
+        if c_p.button("✅ ¡La domino!", use_container_width=True):
+            update_card_mastery(card_id, 1)
+            st.session_state.f_idx += 1
+            st.session_state.f_flip = False
+            st.rerun()
 
-        b_voltear, b_sig = st.columns([1, 1])
-        with b_voltear:
-            if st.button("👁️ Voltear / Revelar", use_container_width=True):
-                st.session_state.f_flip = True
-                st.rerun()
-        with b_sig:
-            if st.button("➡️ Siguiente Tarjeta", use_container_width=True):
-                st.session_state.f_idx += 1
-                st.session_state.f_flip = False
-                st.rerun()
-
-        st.markdown("#### ¿Cómo te fue con esta frase?")
-        c_fail, c_pass = st.columns(2)
-        with c_fail:
-            if st.button("❌ Aún me cuesta", use_container_width=True):
-                update_card_mastery(card_id, 0)
-                st.session_state.f_idx += 1
-                st.session_state.f_flip = False
-                st.toast("Marcada para seguir repasando")
-                st.rerun()
-        with c_pass:
-            if st.button("✅ ¡Ya me la sé!", use_container_width=True):
-                update_card_mastery(card_id, 1)
-                st.session_state.f_idx += 1
-                st.session_state.f_flip = False
-                st.toast("¡Excelente! Sumada a tus tarjetas dominadas 🎉")
-                st.rerun()
-
-# --- 5. QUIZZES CON EVALUACIÓN ---
 elif menu == "📝 Quizzes & Evaluaciones":
     st.markdown("## 📝 Centro de Evaluaciones y Tests")
-    st.caption("Ponte a prueba con rondas de preguntas dinámicas y guarda tu puntuación.")
-
     col1, col2 = st.columns([1.5, 1])
     with col1:
         nivel_q = st.selectbox("Selecciona Nivel a Evaluar:", ["A0", "A1", "A2", "B1"], index=0)
     with col2:
-        cant_q = st.selectbox("Cantidad de preguntas:", [10, 25, 50], index=0)
-
-    if st.button("🚀 Iniciar Nueva Ronda de Preguntas", use_container_width=True):
+        cant_q = st.selectbox("Cantidad de preguntas:", [10, 25], index=0)
+    if st.button("🚀 Iniciar Ronda", use_container_width=True):
         st.session_state.preguntas_activas = get_quiz_questions(nivel_q, cant_q)
         st.session_state.quiz_evaluado = False
-        st.session_state.quiz_respuestas = {}
         st.rerun()
-
     if "preguntas_activas" in st.session_state and st.session_state.preguntas_activas:
-        preguntas = st.session_state.preguntas_activas
-        st.info(f"Mostrando **{len(preguntas)} preguntas** de nivel **{nivel_q}**.")
-
         with st.form("quiz_form"):
             user_answers = {}
-            for i, item in enumerate(preguntas):
+            for i, item in enumerate(st.session_state.preguntas_activas):
                 qid, qlvl, qcat, qtext, op1, op2, op3, op4, corr, expl = item
-                st.markdown(f"**{i+1}. {qtext}** `<span style='color:#38BDF8;'>[{qcat}]</span>`", unsafe_allow_html=True)
-                user_answers[qid] = st.radio(
-                    f"Pregunta {i+1}",
-                    [op1, op2, op3, op4],
-                    key=f"user_ans_{qid}",
-                    label_visibility="collapsed",
-                    index=None
-                )
-                st.divider()
-
-            submitted = st.form_submit_button("🏁 Terminar y Calificar Ronda")
-            if submitted:
-                puntaje = 0
-                for item in preguntas:
-                    qid, _, _, _, _, _, _, _, corr, _ = item
-                    if user_answers.get(qid) == corr:
-                        puntaje += 1
-                save_quiz_score(nivel_q, puntaje, len(preguntas))
+                st.markdown(f"**{i+1}. {qtext}**")
+                user_answers[qid] = st.radio(f"P{i+1}", [op1, op2, op3, op4], key=f"ans_{qid}", label_visibility="collapsed", index=None)
+            if st.form_submit_button("🏁 Calificar Ronda"):
+                score = sum(1 for item in st.session_state.preguntas_activas if user_answers.get(item[0]) == item[8])
+                save_quiz_score(nivel_q, score, len(st.session_state.preguntas_activas))
                 st.session_state.quiz_evaluado = True
-                st.session_state.ultimo_score = (puntaje, len(preguntas), nivel_q)
+                st.session_state.ultimo_score = (score, len(st.session_state.preguntas_activas), nivel_q)
                 st.rerun()
-
     if st.session_state.get("quiz_evaluado", False):
         p, t, lvl = st.session_state.ultimo_score
-        pct = int((p / t) * 100) if t > 0 else 0
-        if pct >= 80:
-            st.success(f"🎉 ¡Felicidades! Calificación: **{p} de {t}** ({pct}%). ¡Dominas muy bien {lvl}!")
-        else:
-            st.warning(f"✍️ Calificación: **{p} de {t}** ({pct}%). Continúa practicando con las Flashcards.")
+        st.success(f"🏆 Resultado: **{p} de {t}** aciertos en {lvl}.")
 
-    st.markdown("### 📊 Historial de Exámenes Guardados")
-    historial = get_quiz_history()
-    if historial:
-        for h_date, h_lvl, h_score, h_total, h_pct in historial:
-            st.markdown(f"• **{h_lvl}** — **{h_score}/{h_total}** ({h_pct}%) <small style='color:#64748B;'>[{h_date}]</small>", unsafe_allow_html=True)
-    else:
-        st.caption("Aún no has completado evaluaciones. Inicia una arriba.")
-
-# --- 6. SPEAKING & RETROALIMENTACIÓN CON IA ---
+# --- 6. SPEAKING & IA FEEDBACK LAB ---
 elif menu == "🎙️ Speaking & Feedback Lab":
     st.markdown("## 🎙️ Speaking & Feedback con Inteligencia Artificial")
     st.markdown("Practica tus respuestas orales o escritas y recibe corrección instantánea de un tutor nativo con IA.")
@@ -585,14 +481,12 @@ elif menu == "🎙️ Speaking & Feedback Lab":
     modo = st.radio("Modalidad de práctica:", ["✍️ Escrito (Corrección Inmediata con IA)", "🎙️ Hablado (Grabación y Práctica de Voz)"], horizontal=True)
 
     if modo == "✍️ Escrito (Corrección Inmediata con IA)":
-        st.markdown("**Escribe tu respuesta en inglés:**")
-        user_text = st.text_area("Tu respuesta:", placeholder="I am Lorena and I am 38 years old...", height=120)
-
+        user_text = st.text_area("Escribe tu respuesta en inglés:", placeholder="Escribe aquí tu frase...", height=120)
         if st.button("🤖 Analizar y Corregir con IA", use_container_width=True):
             if not user_text.strip():
                 st.warning("Escribe al menos una frase en inglés antes de analizar.")
             else:
-                with st.spinner("Tu tutor de IA está evaluando tu gramática y estilo..."):
+                with st.spinner("Tu tutora de IA está analizando tu gramática..."):
                     retro = evaluate_speech_with_ai(tema, user_text)
                     st.markdown("""
                     <div class="glass-card">
@@ -600,21 +494,17 @@ elif menu == "🎙️ Speaking & Feedback Lab":
                     """, unsafe_allow_html=True)
                     st.markdown(retro)
                     st.markdown("</div>", unsafe_allow_html=True)
-
     else:
-        st.markdown("**Grábate respondiendo en voz alta:**")
         audio_grabado = st.audio_input("Presiona para grabar:")
         if audio_grabado:
             st.audio(audio_grabado)
-            st.success("¡Audio grabado! Escúchate para notar tu entonación.")
-        
-        st.markdown("**Escribe lo que dijiste para que la IA lo califique:**")
-        speech_text = st.text_area("Borrador de lo que hablaste:", placeholder="I said: First I wake up early...", height=100)
+            st.success("¡Audio grabado! Escúchate con atención.")
+        speech_text = st.text_area("Borrador de lo que hablaste en voz alta:", placeholder="Escribe aquí lo que dijiste para que la IA lo califique...", height=100)
         if st.button("🤖 Evaluar lo que dije con IA", use_container_width=True):
             if not speech_text.strip():
-                st.warning("Escribe el texto de tu audio para que la IA pueda corregirte.")
+                st.warning("Escribe el texto de lo que hablaste para que la IA pueda corregirte.")
             else:
-                with st.spinner("Evaluando fluidez y vocabulario..."):
+                with st.spinner("Tu tutora de IA está evaluando tu respuesta..."):
                     retro = evaluate_speech_with_ai(tema, speech_text)
                     st.markdown("""
                     <div class="glass-card">
