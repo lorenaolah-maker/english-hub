@@ -31,7 +31,7 @@ def evaluate_speech_with_ai(prompt_text, user_response, is_spoken=False):
     - Si se trata de errores típicos hispanohablantes (como usar 'have' en vez de 'to be' para la edad, omisión de pronombres, o preposiciones in/on/at), explica el porqué de forma clara y pedagógica.
     
     ✨ **Versión Nivel Nativo (Natural Phrasing):**
-    - Entrega la versión pulida exactamente como la diría un nativo americano o británico contemporáneo en una conversación real.
+    - Entrega la versión pulida exactamente como la diría un nativo contemporáneo en una conversación real.
     
     🗣️ **Guía Fonética y Pronunciación:**
     - Señala las 2 o 3 palabras clave de la respuesta con su pronunciación fonética simplificada en español (ej. *comfortable -> KÖMF-ter-buhl*) y consejos para enlazar sonidos (connected speech).
@@ -46,7 +46,6 @@ def evaluate_speech_with_ai(prompt_text, user_response, is_spoken=False):
     }
     data = json.dumps(payload).encode("utf-8")
     
-    # Modelos activos en orden de estabilidad y disponibilidad
     candidate_models = ["gemini-flash-latest", "gemini-2.5-flash", "gemini-3.8-flash"]
     last_error = ""
     
@@ -85,8 +84,7 @@ def init_db():
             current_unit INTEGER,
             total_units INTEGER,
             current_step TEXT,
-            last_study TEXT,
-            platform_url TEXT
+            last_study TEXT
         )
     """)
     c.execute("""
@@ -139,11 +137,9 @@ def init_db():
         )
     """)
     
-    # Cursos iniciales con enlace directo
-    c.execute("INSERT OR REPLACE INTO courses VALUES ('gringo', 'Gringo Academy (Método Inmersivo)', 1, 130, 'Paso 1: Vocabulario en contexto', ?, 'https://consumer.hotmart.com')", (str(datetime.now().date()),))
-    c.execute("INSERT OR REPLACE INTO courses VALUES ('neural', 'Inglés Práctico (Activación Neural - 12 Semanas)', 1, 12, 'Semana 1', ?, 'https://consumer.hotmart.com')", (str(datetime.now().date()),))
+    c.execute("INSERT OR IGNORE INTO courses VALUES ('gringo', 'Gringo Academy (Método Inmersivo)', 1, 130, 'Paso 1: Vocabulario en contexto', ?)", (str(datetime.now().date()),))
+    c.execute("INSERT OR IGNORE INTO courses VALUES ('neural', 'Inglés Práctico (Activación Neural - 12 Semanas)', 1, 12, 'Semana 1', ?)", (str(datetime.now().date()),))
     
-    # Semillas de Flashcards desde A0 hasta C2 si la base de datos está vacía o incompleta
     cards_seed = [
         ("A0", "Saludos", "I am 38 years old", "Tengo 38 años (En inglés la edad se ES, no se 'tiene')"),
         ("A0", "Básicos", "Where are you from?", "¿De dónde eres?"),
@@ -163,7 +159,6 @@ def init_db():
     for lvl, cat, fr, bk in cards_seed:
         c.execute("INSERT OR IGNORE INTO flashcards (level, category, front, back) SELECT ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM flashcards WHERE front = ?)", (lvl, cat, fr, bk, fr))
         
-    # Semillas de Quizzes desde A0 hasta C2
     quiz_seed = [
         ("A0", "Edad", "Choose the correct sentence for age:", "I have 30 years", "I am 30 years old", "I am having 30 years", "I got 30 years", "I am 30 years old", "En inglés se utiliza el verbo To Be para expresar la edad."),
         ("A1", "Presente", "He _____ coffee every morning.", "drink", "drinks", "drinking", "is drink", "drinks", "En tercera persona singular (he/she/it) en presente simple se añade -s."),
@@ -182,7 +177,7 @@ def init_db():
 def get_courses():
     conn = sqlite3.connect("english_learning.db")
     c = conn.cursor()
-    c.execute("SELECT id, name, current_unit, total_units, current_step, last_study, platform_url FROM courses")
+    c.execute("SELECT id, name, current_unit, total_units, current_step, last_study FROM courses")
     data = c.fetchall()
     conn.close()
     return data
