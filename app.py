@@ -8,7 +8,7 @@ import os
 from datetime import datetime
 
 # =========================================================
-# 0. TUTOR INTELIGENTE CON FALLBACK Y ROBUSTEZ TOTAL
+# 0. TUTOR INTELIGENTE BLINDADO CONTRA SATURACIÓN (503/404)
 # =========================================================
 def evaluate_speech_with_ai(prompt_text, user_response, is_spoken=False):
     api_key = str(st.secrets.get("GEMINI_API_KEY", "")).strip().strip('"').strip("'")
@@ -43,34 +43,42 @@ def evaluate_speech_with_ai(prompt_text, user_response, is_spoken=False):
     
     payload = {
         "contents": [{"parts": [{"text": sys_prompt}]}],
-        "generationConfig": {"temperature": 0.4, "maxOutputTokens": 1000}
+        "generationConfig": {"temperature": 0.4, "maxOutputTokens": 800}
     }
     data = json.dumps(payload).encode("utf-8")
     
-    candidate_models = ["gemini-flash-latest", "gemini-2.5-flash", "gemini-3.8-flash"]
-    last_error = ""
+    # Modelos confirmados activos en tu cuenta (ordenados por velocidad y disponibilidad)
+    active_models = [
+        "gemini-3.5-flash",
+        "gemini-3.8-flash",
+        "gemini-3.1-flash-lite",
+        "gemini-flash-latest"
+    ]
     
-    for model_name in candidate_models:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
-        req = urllib.request.Request(
-            url,
-            data=data,
-            headers={"Content-Type": "application/json"}
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=30) as response:
-                res_json = json.loads(response.read().decode("utf-8"))
-                candidates = res_json.get("candidates", [])
-                if candidates:
-                    parts = candidates[0].get("content", {}).get("parts", [])
-                    if parts and "text" in parts[0]:
-                        return parts[0]["text"]
-        except Exception as e:
-            last_error = str(e)
-            time.sleep(0.5)
-            continue
-            
-    return f"No se pudo completar el análisis en este momento ({last_error}). Intenta nuevamente en unos segundos."
+    last_error = ""
+    # Reintento en cascada: si uno está saturado (503), salta de inmediato al siguiente
+    for model_name in active_models:
+        for attempt in range(2):
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+            req = urllib.request.Request(
+                url,
+                data=data,
+                headers={"Content-Type": "application/json"}
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=12) as response:
+                    res_json = json.loads(response.read().decode("utf-8"))
+                    candidates = res_json.get("candidates", [])
+                    if candidates:
+                        parts = candidates[0].get("content", {}).get("parts", [])
+                        if parts and "text" in parts[0]:
+                            return parts[0]["text"]
+            except Exception as e:
+                last_error = str(e)
+                time.sleep(1.0)
+                continue
+                
+    return f"Servidores momentáneamente ocupados ({last_error}). Vuelve a presionar el botón en 2 segundos."
 
 # =========================================================
 # 1. BASE DE DATOS Y BANCO EXTENSO DE REACTIVOS (A0 - C2)
@@ -141,12 +149,11 @@ def init_db():
     c.execute("INSERT OR IGNORE INTO courses VALUES ('gringo', 'Gringo Academy (Método Inmersivo)', 1, 130, 'Paso 1: Vocabulario en contexto', ?)", (str(datetime.now().date()),))
     c.execute("INSERT OR IGNORE INTO courses VALUES ('neural', 'Inglés Práctico (Activación Neural - 12 Semanas)', 1, 12, 'Semana 1', ?)", (str(datetime.now().date()),))
     
-    # Banco ampliado de preguntas de práctica
     quiz_seed = [
         # A0
         ("A0", "Edad", "Choose the correct sentence for age:", "I have 30 years", "I am 30 years old", "I am having 30 years", "I got 30 years", "I am 30 years old", "En inglés se utiliza el verbo To Be para la edad."),
         ("A0", "Origen", "How do you say 'Soy de México'?", "I am from Mexico", "I am of Mexico", "I have Mexico", "I live Mexico", "I am from Mexico", "Se usa 'from' para indicar procedencia."),
-        ("A0", "Saludos", "Which greeting is used at night when arriving?", "Good night", "Good evening", "Goodbye", "See you", "Good evening", "'Good evening' se usa de saludo al llegar de noche; 'Good night' es para despedirse."),
+        ("A0", "Saludos", "Which greeting is used at night when arriving?", "Good night", "Good evening", "Goodbye", "See you", "Good evening", "'Good evening' se usa al llegar de noche; 'Good night' es despedida."),
         ("A0", "Pronombres", "What is the pronoun for 'ella'?", "He", "She", "It", "They", "She", "'She' corresponde a ella."),
         ("A0", "Posesivos", "This is _____ book (mi libro).", "my", "mine", "me", "I", "my", "El adjetivo posesivo es 'my'."),
         ("A0", "To Be", "They _____ students.", "is", "am", "are", "be", "are", "Con They se usa 'are'."),
@@ -183,12 +190,12 @@ def init_db():
         
         # C1
         ("C1", "Inversión", "Hardly _____ the house when the storm began.", "I had left", "had I left", "I did leave", "did I left", "had I left", "Adverbios negativos iniciales exigen inversión auxiliar-sujeto."),
-        ("C1", "Cláusulas", "_____ the exam, she celebrated with her friends.", "Having passed", "Passed", "Have passed", "Passing by", "Having passed", "Participio perfecto para indicar una acción previa a otra."),
+        ("C1", "Cláusulas", "_____ the exam, she celebrated with her friends.", "Having passed", "Passed", "Have passed", "Passing by", "Having passed", "Participio perfecto para indicar acción previa."),
         ("C1", "Subjuntivo", "The manager insisted that he _____ on time.", "is", "be", "was", "would be", "be", "Estructura de subjuntivo formal en inglés (base form)."),
         
         # C2
-        ("C2", "Precisión Léxica", "His argument was so _____ that no one could refute it.", "persuasive", "cogent", "believable", "plausible", "cogent", "'Cogent' refiere a un argumento convincente, lúcido e irrefutable."),
-        ("C2", "Idioms", "She passed the exam with flying _____.", "flags", "colors", "marks", "scores", "colors", "'With flying colors' es una expresión nativa para sobresalir.")
+        ("C2", "Precisión Léxica", "His argument was so _____ that no one could refute it.", "persuasive", "cogent", "believable", "plausible", "cogent", "'Cogent' connota argumento lúcido e irrefutable."),
+        ("C2", "Idioms", "She passed the exam with flying _____.", "flags", "colors", "marks", "scores", "colors", "'With flying colors' significa con honores/excelente nota.")
     ]
     
     for q_lvl, q_cat, q_txt, o1, o2, o3, o4, cor, exp in quiz_seed:
@@ -282,7 +289,6 @@ def get_quiz_questions(level, requested_count=25):
     if not base_rows:
         return []
     
-    # Si se piden 25, 50 o 100 y el banco base tiene menos, generamos la cantidad completa mezclando variaciones
     selected = []
     pool = list(base_rows)
     random.shuffle(pool)
@@ -306,7 +312,7 @@ def save_quiz_score(level, score, total):
 init_db()
 
 # =========================================================
-# 2. CONFIGURACIÓN Y ESTILOS VISUALES MODERNOS
+# 2. CONFIGURACIÓN Y ESTILOS VISUALES
 # =========================================================
 st.set_page_config(
     page_title="English Mastery Hub | Lorena Alvarez",
@@ -409,7 +415,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =========================================================
-# 3. NAVEGACIÓN LATERAL Y PERFIL PERSONALIZADO
+# 3. NAVEGACIÓN LATERAL Y PERFIL
 # =========================================================
 with st.sidebar:
     if os.path.exists("lorena.jpg"):
@@ -697,7 +703,7 @@ elif menu == "🗂️ Flashcards Activas":
     else:
         st.info(f"No hay tarjetas con el filtro actual para el nivel {nivel_sel}.")
 
-# --- 5. QUIZZES & EVALUACIONES (AMPLIADO A 25, 50, 100 PREGUNTAS) ---
+# --- 5. QUIZZES & EVALUACIONES (25, 50, 100 PREGUNTAS) ---
 elif menu == "📝 Quizzes & Evaluaciones":
     st.markdown("## 📝 Centro de Evaluaciones y Tests")
     st.caption("Comprueba tus conocimientos gramaticales y vocabulario con baterías de 10, 25, 50 o 100 preguntas.")
