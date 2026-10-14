@@ -6,7 +6,7 @@ import urllib.request
 import re
 import time
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # =========================================================
 # 0. CONEXIÓN Y SINCRONIZACIÓN AUTOMÁTICA CON NOTION API
@@ -310,6 +310,46 @@ def get_recent_sessions():
     conn.close()
     return rows
 
+def get_pomodoro_analytics():
+    conn = sqlite3.connect("english_learning.db")
+    c = conn.cursor()
+    c.execute("SELECT date, duration_min, focus_area FROM study_sessions")
+    all_sessions = c.fetchall()
+    conn.close()
+    
+    total_min = 0
+    week_min = 0
+    month_min = 0
+    by_area = {}
+    
+    now = datetime.now()
+    start_of_week = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    current_year_month = now.strftime("%Y-%m")
+    
+    for dt_str, dur, area in all_sessions:
+        total_min += dur
+        by_area[area] = by_area.get(area, 0) + dur
+        
+        try:
+            session_dt = datetime.strptime(dt_str[:16], "%Y-%m-%d %H:%M")
+            if session_dt >= start_of_week:
+                week_min += dur
+            if dt_str.startswith(current_year_month):
+                month_min += dur
+        except Exception:
+            if dt_str.startswith(current_year_month):
+                month_min += dur
+
+    return {
+        "total_hours": round(total_min / 60, 1),
+        "total_min": total_min,
+        "week_hours": round(week_min / 60, 1),
+        "week_min": week_min,
+        "month_hours": round(month_min / 60, 1),
+        "month_min": month_min,
+        "by_area": sorted(by_area.items(), key=lambda x: x[1], reverse=True)
+    }
+
 def get_flashcards(level, filter_mode="Todas"):
     conn = sqlite3.connect("english_learning.db")
     c = conn.cursor()
@@ -411,6 +451,27 @@ st.markdown("""
         margin-bottom: 1.2rem;
         box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.35);
         backdrop-filter: blur(10px);
+    }
+    .stat-box {
+        background: rgba(15, 23, 42, 0.7);
+        border: 1px solid rgba(56, 189, 248, 0.25);
+        border-radius: 12px;
+        padding: 1rem;
+        text-align: center;
+    }
+    .stat-number {
+        font-size: 1.8rem;
+        font-weight: 800;
+        color: #38BDF8;
+        line-height: 1.2;
+    }
+    .stat-label {
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: #94A3B8;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-top: 4px;
     }
     .profile-card {
         background: linear-gradient(135deg, rgba(30, 41, 59, 0.9) 0%, rgba(15, 23, 42, 0.95) 100%);
@@ -542,10 +603,53 @@ st.sidebar.markdown(
 # 5. MÓDULOS DE LA APLICACIÓN
 # =========================================================
 
-# --- 1. FOCUS & POMODORO (AHORA AL PRINCIPIO) ---
+# --- 1. FOCUS & POMODORO CON ANALÍTICAS COMPLETAS ---
 if menu == "⏱️ Focus & Pomodoro (15-20m)":
-    st.markdown("## ⏱️ Sesión de Estudio Focalizado")
-    st.caption("Organiza tu bloque de inmersión diaria de 15 a 20 minutos.")
+    st.markdown("## ⏱️ Sesión de Estudio Focalizado & Métricas")
+    st.caption("Organiza tus bloques de inmersión y verifica tus horas dedicadas por semana, mes y destreza.")
+    
+    # ANALÍTICAS EN VIVO
+    analytics = get_pomodoro_analytics()
+    
+    c_st1, c_st2, c_st3, c_st4 = st.columns(4)
+    with c_st1:
+        st.markdown(f"""
+        <div class="stat-box">
+            <div class="stat-number">{analytics['week_hours']}h</div>
+            <div class="stat-label">Esta Semana</div>
+            <div style="font-size:0.75rem; color:#64748B;">{analytics['week_min']} minutos</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with c_st2:
+        st.markdown(f"""
+        <div class="stat-box">
+            <div class="stat-number">{analytics['month_hours']}h</div>
+            <div class="stat-label">Este Mes</div>
+            <div style="font-size:0.75rem; color:#64748B;">{analytics['month_min']} minutos</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with c_st3:
+        st.markdown(f"""
+        <div class="stat-box">
+            <div class="stat-number">{analytics['total_hours']}h</div>
+            <div class="stat-label">Total Acumulado</div>
+            <div style="font-size:0.75rem; color:#64748B;">{analytics['total_min']} minutos</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with c_st4:
+        top_area = analytics['by_area'][0][0] if analytics['by_area'] else "Sin registro aún"
+        # Simplificar nombre largo
+        top_short = top_area.split(":")[0] if ":" in top_area else top_area
+        st.markdown(f"""
+        <div class="stat-box">
+            <div class="stat-number" style="font-size:1.25rem; color:#F59E0B; margin-top:6px;">{top_short}</div>
+            <div class="stat-label">Habilidad Líder</div>
+            <div style="font-size:0.75rem; color:#64748B;">Mayor tiempo dedicado</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("<div style='margin-top: 1.5rem;'></div>", unsafe_allow_html=True)
+
     c1, c2 = st.columns([1.2, 1])
     with c1:
         st.markdown("""
@@ -556,20 +660,22 @@ if menu == "⏱️ Focus & Pomodoro (15-20m)":
         """, unsafe_allow_html=True)
         tiempo_foco = st.select_slider("Duración de la sesión:", options=[5, 10, 15, 20, 25, 30], value=15)
         enfoque = st.selectbox("Área a trabajar:", [
-            "Speaking Lab: Práctica Oral con IA",
-            "Speak & Improve (Cambridge Test)",
+            "Speaking: Práctica Oral con IA",
+            "Speaking: Speak & Improve (Cambridge)",
             "Listening: BBC & YouGlish",
-            "Writing Clinic: Redacción de Textos",
-            "Duolingo & Práctica de Racha",
-            "Gringo Academy: Episodio / Telenovela",
-            "Activación Neural: Audio e Inmersión Subconsciente",
-            "Flashcards: Repaso Espaciado (Niveles A0 - C2)",
-            "Quizzes & Evaluaciones de Nivel"
+            "Writing: Taller de Redacción",
+            "Práctica: Duolingo & Racha",
+            "Curso: Gringo Academy (Telenovela)",
+            "Curso: Activación Neural (12 Semanas)",
+            "Memoria: Flashcards Activas (A0 a C2)",
+            "Evaluación: Quizzes & Tests"
         ])
         if st.button("🔥 Iniciar y Registrar Sesión", use_container_width=True):
             log_session(tiempo_foco, enfoque)
-            st.toast("✅ ¡Sesión guardada en Notion y localmente!")
-            st.success(f"¡Sesión de **{tiempo_foco} min** guardada con éxito!")
+            st.toast("✅ ¡Sesión guardada en Notion y en tus métricas!")
+            st.success(f"¡Sesión de **{tiempo_foco} min** en **{enfoque}** registrada con éxito!")
+            st.rerun()
+
     with c2:
         st.markdown("""
         <div class="glass-card">
@@ -581,6 +687,20 @@ if menu == "⏱️ Focus & Pomodoro (15-20m)":
         if sesiones:
             for s_date, s_min, s_focus in sesiones:
                 st.markdown(f"• **{s_min} min** — {s_focus} <span style='color:#64748B; font-size:0.8rem;'>({s_date})</span>", unsafe_allow_html=True)
+        else:
+            st.info("Aún no tienes sesiones registradas hoy. ¡Inicia tu primer bloque de 15 minutos!")
+
+    # DESGLOSE DE TIEMPO POR HABILIDADES (BARRAS Y PORCENTAJES)
+    if analytics["by_area"]:
+        st.markdown("### 📊 ¿A qué le estás dedicando más tiempo?")
+        total_time = analytics["total_min"] if analytics["total_min"] > 0 else 1
+        for area_name, mins in analytics["by_area"]:
+            pct_area = int((mins / total_time) * 100)
+            hrs = round(mins / 60, 1)
+            c_label, c_pct = st.columns([3, 1])
+            c_label.markdown(f"**{area_name}** • {hrs} hrs ({mins} min)")
+            c_pct.markdown(f"<div style='text-align:right; font-weight:700; color:#38BDF8;'>{pct_area}%</div>", unsafe_allow_html=True)
+            st.progress(pct_area / 100)
 
 # --- 2. SPEAKING & FEEDBACK LAB (CON SPEAK & IMPROVE INTEGRADO Y PANTALLA COMPLETA) ---
 elif menu == "🗣️ Speaking & Feedback Lab":
