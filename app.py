@@ -398,7 +398,6 @@ st.markdown("""
     <meta name="google" content="notranslate">
 </head>
 <style>
-    /* Ocultar barra superior de Streamlit para interfaz limpia */
     header[data-testid="stHeader"] {
         visibility: hidden;
         height: 0%;
@@ -486,11 +485,19 @@ st.markdown("""
         box-shadow: 0 4px 12px rgba(234, 88, 12, 0.35);
         margin-top: 8px;
     }
+    .cambridge-card {
+        background: linear-gradient(135deg, rgba(234, 88, 12, 0.15) 0%, rgba(15, 23, 42, 0.9) 100%);
+        border: 1px solid rgba(234, 88, 12, 0.4);
+        border-radius: 16px;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 8px 25px rgba(234, 88, 12, 0.15);
+    }
 </style>
 """, unsafe_allow_html=True)
 
 # =========================================================
-# 4. NAVEGACIÓN LATERAL Y PERFIL PERSONALIZADO
+# 4. NAVEGACIÓN LATERAL (FOCUS & POMODORO AL INICIO)
 # =========================================================
 with st.sidebar:
     if os.path.exists("lorena.jpg"):
@@ -505,18 +512,19 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
 
+# FOCUS & POMODORO QUEDA DE PRIMERO EN EL MENÚ
 menu = st.sidebar.radio(
     "Navegación:",
     [
-        "🌐 Hub de Plataformas & Apps",
+        "⏱️ Focus & Pomodoro (15-20m)",
         "🗣️ Speaking & Feedback Lab",
+        "🌐 Hub de Plataformas & Apps",
         "🎧 Listening & Inmersión",
         "✍️ Writing Clinic",
         "🎬 Hub de Cursos (Hotmart)",
         "🗺️ Ruta de Hitos (A0 a C2)",
         "🗂️ Flashcards Activas",
-        "📝 Quizzes & Evaluaciones",
-        "⏱️ Focus & Pomodoro (15-20m)"
+        "📝 Quizzes & Evaluaciones"
     ]
 )
 
@@ -534,8 +542,137 @@ st.sidebar.markdown(
 # 5. MÓDULOS DE LA APLICACIÓN
 # =========================================================
 
-# --- 1. HUB DE PLATAFORMAS & APPS ---
-if menu == "🌐 Hub de Plataformas & Apps":
+# --- 1. FOCUS & POMODORO (AHORA AL PRINCIPIO) ---
+if menu == "⏱️ Focus & Pomodoro (15-20m)":
+    st.markdown("## ⏱️ Sesión de Estudio Focalizado")
+    st.caption("Organiza tu bloque de inmersión diaria de 15 a 20 minutos.")
+    c1, c2 = st.columns([1.2, 1])
+    with c1:
+        st.markdown("""
+        <div class="glass-card">
+            <span class="tag-badge">TEMPORIZADOR ACTIVO</span>
+            <div class="card-title">Configurar bloque de hoy</div>
+        </div>
+        """, unsafe_allow_html=True)
+        tiempo_foco = st.select_slider("Duración de la sesión:", options=[5, 10, 15, 20, 25, 30], value=15)
+        enfoque = st.selectbox("Área a trabajar:", [
+            "Speaking Lab: Práctica Oral con IA",
+            "Speak & Improve (Cambridge Test)",
+            "Listening: BBC & YouGlish",
+            "Writing Clinic: Redacción de Textos",
+            "Duolingo & Práctica de Racha",
+            "Gringo Academy: Episodio / Telenovela",
+            "Activación Neural: Audio e Inmersión Subconsciente",
+            "Flashcards: Repaso Espaciado (Niveles A0 - C2)",
+            "Quizzes & Evaluaciones de Nivel"
+        ])
+        if st.button("🔥 Iniciar y Registrar Sesión", use_container_width=True):
+            log_session(tiempo_foco, enfoque)
+            st.toast("✅ ¡Sesión guardada en Notion y localmente!")
+            st.success(f"¡Sesión de **{tiempo_foco} min** guardada con éxito!")
+    with c2:
+        st.markdown("""
+        <div class="glass-card">
+            <span class="tag-badge">HISTORIAL RECIENTE</span>
+            <div class="card-title">Últimas sesiones completadas</div>
+        </div>
+        """, unsafe_allow_html=True)
+        sesiones = get_recent_sessions()
+        if sesiones:
+            for s_date, s_min, s_focus in sesiones:
+                st.markdown(f"• **{s_min} min** — {s_focus} <span style='color:#64748B; font-size:0.8rem;'>({s_date})</span>", unsafe_allow_html=True)
+
+# --- 2. SPEAKING & FEEDBACK LAB (CON SPEAK & IMPROVE INTEGRADO Y PANTALLA COMPLETA) ---
+elif menu == "🗣️ Speaking & Feedback Lab":
+    st.markdown("## 🗣️ Speaking & Feedback Lab")
+    st.caption("Entrena tu fluidez oral con tu Tutora Inteligente de Gemini y con el Evaluador Oficial de Cambridge.")
+
+    herramienta_speaking = st.radio(
+        "Selecciona con qué IA practicar hoy:",
+        ["🤖 Tutora IA Personalizada (Corrección, Fonética y Registro en Notion)", "🎙️ Speak & Improve (Evaluador Oficial Cambridge English)"],
+        horizontal=True
+    )
+
+    if herramienta_speaking == "🎙️ Speak & Improve (Evaluador Oficial Cambridge English)":
+        st.markdown("""
+        <div class="cambridge-card">
+            <span class="tag-badge" style="background:rgba(234, 88, 12, 0.2); color:#FB923C; border-color:rgba(234, 88, 12, 0.4);">CAMBRIDGE ENGLISH RESEARCH PROJECT</span>
+            <h2 style="color:#F8FAFC; margin-top:8px;">🤖 Sandi: Tu Evaluador de Pronunciación Cambridge</h2>
+            <p style="color:#CBD5E1; font-size:0.95rem; line-height:1.5;">
+                Speak & Improve te hace preguntas por el micrófono, escucha tu voz y te entrega al instante tu <strong>nivel exacto del Marco Común Europeo (A1, A2, B1, B2, C1 o C2)</strong> con análisis acústico.
+            </p>
+            <div style="margin-top:1.2rem;">
+                <a href="https://speakandimprove.com" target="_blank" style="text-decoration:none;">
+                    <button style="width:100%; background: linear-gradient(135deg, #EA580C 0%, #C2410C 100%); color:white; border:none; padding:15px; border-radius:12px; font-weight:700; font-size:1.05rem; cursor:pointer; box-shadow:0 4px 15px rgba(234, 88, 12, 0.4);">
+                        🚀 Abrir Speak & Improve a Pantalla Completa
+                    </button>
+                </a>
+            </div>
+            <p style="color:#94A3B8; font-size:0.8rem; margin-top:10px; text-align:center;">
+                💡 Se abrirá en una pestaña completa y limpia para aprovechar todo el micrófono y la pantalla de tu iPad.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        prompts = [
+            "Introduce yourself: your name, where you live, and your age. (A0)",
+            "Describe your typical morning routine in 3 sentences. (A1)",
+            "What did you do yesterday afternoon? Mention 2 activities. (A2)",
+            "Explain a difficult situation at work and how you handled it. (B1/B2)",
+            "Why is continuous learning essential for professional development? (C1/C2)"
+        ]
+        tema = st.selectbox("Elige tu reto de hoy:", prompts)
+        st.info(f"🗣️ **Prompt de práctica:** \"{tema}\"")
+
+        modo = st.radio("Modalidad de práctica:", ["✍️ Escrito (Corrección Inmediata con IA)", "🎙️ Hablado (Grabación y Práctica de Voz)"], horizontal=True)
+
+        if modo == "✍️ Escrito (Corrección Inmediata con IA)":
+            user_text = st.text_area("Escribe tu respuesta en inglés:", placeholder="Escribe aquí tu frase...", height=120)
+            if st.button("🤖 Analizar y Corregir con IA", use_container_width=True):
+                if not user_text.strip():
+                    st.warning("Escribe al menos una frase en inglés antes de analizar.")
+                else:
+                    with st.spinner("Tu tutora de IA está analizando tu respuesta..."):
+                        retro = evaluate_speech_with_ai(tema, user_text, is_spoken=False)
+                        ok, msg = log_speaking_notion(tema, user_text, retro)
+                        if ok:
+                            st.toast("✅ ¡Registro enviado a tu Notion con éxito!")
+                        else:
+                            st.caption(f"ℹ️ Registro en Notion: {msg}")
+                        st.markdown("""
+                        <div class="glass-card">
+                            <span class="tag-badge">RETROALIMENTACIÓN SINCRONIZADA CON NOTION</span>
+                        """, unsafe_allow_html=True)
+                        st.markdown(retro)
+                        st.markdown("</div>", unsafe_allow_html=True)
+        else:
+            st.markdown("#### 🎧 Grabación de Audio Directa")
+            audio_grabado = st.audio_input("Presiona para grabar tu pronunciación:")
+            if audio_grabado:
+                st.audio(audio_grabado)
+                st.success("¡Audio grabado! Escucha tu entonación.")
+                
+            speech_text = st.text_area("Borrador o transcripción de lo que hablaste en voz alta:", placeholder="Escribe lo que dijiste para evaluar fonética y contenido...", height=100)
+            if st.button("🤖 Evaluar Pronunciación y Contenido con IA", use_container_width=True):
+                if not speech_text.strip():
+                    st.warning("Escribe el texto de lo que hablaste para que la IA evalúe la fonética y gramática.")
+                else:
+                    with st.spinner("Tu tutora de IA está evaluando tu respuesta oral y fonética..."):
+                        retro = evaluate_speech_with_ai(tema, speech_text, is_spoken=True)
+                        ok, msg = log_speaking_notion(tema, speech_text, retro)
+                        if ok:
+                            st.toast("✅ ¡Análisis de Speaking guardado en Notion!")
+                        else:
+                            st.caption(f"ℹ️ Registro en Notion: {msg}")
+                        st.markdown("""
+                        <div class="glass-card">
+                            <span class="tag-badge">ANÁLISIS DE SPEAKING GUARDADO EN NOTION</span>
+                        """, unsafe_allow_html=True)
+                        st.markdown(retro)
+                        st.markdown("</div>", unsafe_allow_html=True)
+
+# --- 3. HUB DE PLATAFORMAS & APPS ---
+elif menu == "🌐 Hub de Plataformas & Apps":
     st.markdown("## 🌐 Centro de Plataformas & Práctica Gratuita")
     st.caption("Herramientas interactivas seleccionadas para practicar cada destreza sin costo.")
     
@@ -543,10 +680,29 @@ if menu == "🌐 Hub de Plataformas & Apps":
     with c_p1:
         st.markdown("""
         <div class="glass-card">
+            <span class="tag-badge">OFICIAL CAMBRIDGE • IA HABLADA</span>
+            <h3>🤖 Speak & Improve (Cambridge)</h3>
+            <p style="color:#94A3B8;">Habla directamente con Sandi el robot evaluador de Cambridge. Mide tu nivel oral exacto en la escala oficial (A1 a C2) y te da consejos en tiempo real.</p>
+            <a href="https://speakandimprove.com" target="_blank" class="platform-btn" style="background: linear-gradient(135deg, #EA580C 0%, #C2410C 100%); color:white !important; border:none;">Abrir Speak & Improve</a>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("""
+        <div class="glass-card">
             <span class="tag-badge">GAMIFICACIÓN & RACHA</span>
             <h3>🦉 Duolingo Web</h3>
-            <p style="color:#94A3B8;">Práctica de vocabulario ágil, ejercicios diarios y gramática intuitiva para mantener el hábito.</p>
+            <p style="color:#94A3B8;">Práctica de vocabulario ágil, ejercicios diarios y gramática intuitiva para mantener el hábito activo.</p>
             <a href="https://www.duolingo.com" target="_blank" class="platform-btn" style="background:#58CC02; color:white !important;">Abrir Duolingo</a>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    with c_p2:
+        st.markdown("""
+        <div class="glass-card">
+            <span class="tag-badge">PRONUNCIACIÓN REAL EN VIDEO</span>
+            <h3>🎬 YouGlish: Contexto en Video</h3>
+            <p style="color:#94A3B8;">Escribe cualquier término y escúchalo pronunciado por personas reales en clips de YouTube.</p>
+            <a href="https://youglish.com/pronounce/english" target="_blank" class="platform-btn" style="background:#E11D48; color:white !important;">Abrir YouGlish</a>
         </div>
         """, unsafe_allow_html=True)
         
@@ -559,7 +715,6 @@ if menu == "🌐 Hub de Plataformas & Apps":
         </div>
         """, unsafe_allow_html=True)
         
-    with c_p2:
         st.markdown("""
         <div class="glass-card">
             <span class="tag-badge">OÍDO & MÚSICA</span>
@@ -568,79 +723,8 @@ if menu == "🌐 Hub de Plataformas & Apps":
             <a href="https://lingoclip.com" target="_blank" class="platform-btn" style="background:#0284C7; color:white !important;">Abrir LingoClip</a>
         </div>
         """, unsafe_allow_html=True)
-        
-        st.markdown("""
-        <div class="glass-card">
-            <span class="tag-badge">PRONUNCIACIÓN REAL EN VIDEO</span>
-            <h3>🎬 YouGlish: Contexto en Video</h3>
-            <p style="color:#94A3B8;">Escribe cualquier término y escúchalo pronunciado por personas reales en clips de YouTube.</p>
-            <a href="https://youglish.com/pronounce/english" target="_blank" class="platform-btn" style="background:#E11D48; color:white !important;">Abrir YouGlish</a>
-        </div>
-        """, unsafe_allow_html=True)
 
-# --- 2. SPEAKING & FEEDBACK LAB ---
-elif menu == "🗣️ Speaking & Feedback Lab":
-    st.markdown("## 🗣️ Speaking & Feedback con Inteligencia Artificial")
-    st.caption("Practica respuestas orales o escritas y recibe corrección instantánea registrada en tu Notion.")
-
-    prompts = [
-        "Introduce yourself: your name, where you live, and your age. (A0)",
-        "Describe your typical morning routine in 3 sentences. (A1)",
-        "What did you do yesterday afternoon? Mention 2 activities. (A2)",
-        "Explain a difficult situation at work and how you handled it. (B1/B2)",
-        "Why is continuous learning essential for professional development? (C1/C2)"
-    ]
-    tema = st.selectbox("Elige tu reto de hoy:", prompts)
-    st.info(f"🗣️ **Prompt de práctica:** \"{tema}\"")
-
-    modo = st.radio("Modalidad de práctica:", ["✍️ Escrito (Corrección Inmediata con IA)", "🎙️ Hablado (Grabación y Práctica de Voz)"], horizontal=True)
-
-    if modo == "✍️ Escrito (Corrección Inmediata con IA)":
-        user_text = st.text_area("Escribe tu respuesta en inglés:", placeholder="Escribe aquí tu frase...", height=120)
-        if st.button("🤖 Analizar y Corregir con IA", use_container_width=True):
-            if not user_text.strip():
-                st.warning("Escribe al menos una frase en inglés antes de analizar.")
-            else:
-                with st.spinner("Tu tutora de IA está analizando tu respuesta..."):
-                    retro = evaluate_speech_with_ai(tema, user_text, is_spoken=False)
-                    ok, msg = log_speaking_notion(tema, user_text, retro)
-                    if ok:
-                        st.toast("✅ ¡Registro enviado a tu Notion con éxito!")
-                    else:
-                        st.caption(f"ℹ️ Registro en Notion: {msg}")
-                    st.markdown("""
-                    <div class="glass-card">
-                        <span class="tag-badge">RETROALIMENTACIÓN SINCRONIZADA CON NOTION</span>
-                    """, unsafe_allow_html=True)
-                    st.markdown(retro)
-                    st.markdown("</div>", unsafe_allow_html=True)
-    else:
-        st.markdown("#### 🎧 Grabación de Audio Directa")
-        audio_grabado = st.audio_input("Presiona para grabar tu pronunciación:")
-        if audio_grabado:
-            st.audio(audio_grabado)
-            st.success("¡Audio grabado! Escucha tu entonación.")
-            
-        speech_text = st.text_area("Borrador o transcripción de lo que hablaste en voz alta:", placeholder="Escribe lo que dijiste para evaluar fonética y contenido...", height=100)
-        if st.button("🤖 Evaluar Pronunciación y Contenido con IA", use_container_width=True):
-            if not speech_text.strip():
-                st.warning("Escribe el texto de lo que hablaste para que la IA evalúe la fonética y gramática.")
-            else:
-                with st.spinner("Tu tutora de IA está evaluando tu respuesta oral y fonética..."):
-                    retro = evaluate_speech_with_ai(tema, speech_text, is_spoken=True)
-                    ok, msg = log_speaking_notion(tema, speech_text, retro)
-                    if ok:
-                        st.toast("✅ ¡Análisis de Speaking guardado en Notion!")
-                    else:
-                        st.caption(f"ℹ️ Registro en Notion: {msg}")
-                    st.markdown("""
-                    <div class="glass-card">
-                        <span class="tag-badge">ANÁLISIS DE SPEAKING GUARDADO EN NOTION</span>
-                    """, unsafe_allow_html=True)
-                    st.markdown(retro)
-                    st.markdown("</div>", unsafe_allow_html=True)
-
-# --- 3. LISTENING & INMERSIÓN ---
+# --- 4. LISTENING & INMERSIÓN ---
 elif menu == "🎧 Listening & Inmersión":
     st.markdown("## 🎧 Listening & Gimnasio Auditivo")
     st.caption("Estrategias y herramientas para afinar el oído al inglés de velocidad natural.")
@@ -665,7 +749,7 @@ elif menu == "🎧 Listening & Inmersión":
         </div>
         """, unsafe_allow_html=True)
 
-# --- 4. WRITING CLINIC ---
+# --- 5. WRITING CLINIC ---
 elif menu == "✍️ Writing Clinic":
     st.markdown("## ✍️ Writing Clinic: Taller de Redacción Profesional")
     st.caption("Escribe tus textos, diarios o correos y recíbelos pulidos directamente en tu tabla de Notion.")
@@ -695,7 +779,7 @@ elif menu == "✍️ Writing Clinic":
                 st.markdown(retro)
                 st.markdown("</div>", unsafe_allow_html=True)
 
-# --- 5. HUB DE CURSOS (HOTMART) ---
+# --- 6. HUB DE CURSOS (HOTMART) ---
 elif menu == "🎬 Hub de Cursos (Hotmart)":
     st.markdown("## 🎬 Centro de Mando: Hotmart")
     st.caption("Gestiona tu avance y entra directamente a ver tus lecciones en la plataforma oficial.")
@@ -735,7 +819,7 @@ elif menu == "🎬 Hub de Cursos (Hotmart)":
             st.toast("Progreso actualizado")
             st.rerun()
 
-# --- 6. RUTA DE HITOS (A0 A C2) ---
+# --- 7. RUTA DE HITOS (A0 A C2) ---
 elif menu == "🗺️ Ruta de Hitos (A0 a C2)":
     st.markdown("## 🗺️ Mapa Curricular y Temario: Del Nivel 0 a Nativo")
     st.caption("Guía de objetivos, gramática y vocabulario indispensable en cada escalón del Marco Común Europeo.")
@@ -847,7 +931,7 @@ elif menu == "🗺️ Ruta de Hitos (A0 a C2)":
         </div>
         """, unsafe_allow_html=True)
 
-# --- 7. SMART FLASHCARDS ---
+# --- 8. SMART FLASHCARDS ---
 elif menu == "🗂️ Flashcards Activas":
     st.markdown("## 🗂️ Smart Flashcards & Retención Activa")
     st.caption("Repaso espaciado con todos los niveles desde A0 hasta C2.")
@@ -908,7 +992,7 @@ elif menu == "🗂️ Flashcards Activas":
     else:
         st.info(f"No hay tarjetas con el filtro actual para el nivel {nivel_sel}.")
 
-# --- 8. QUIZZES & EVALUACIONES (10, 25, 50, 100 PREGUNTAS) ---
+# --- 9. QUIZZES & EVALUACIONES (10, 25, 50, 100 PREGUNTAS) ---
 elif menu == "📝 Quizzes & Evaluaciones":
     st.markdown("## 📝 Centro de Evaluaciones y Tests")
     st.caption("Comprueba tus conocimientos con baterías de 10, 25, 50 o 100 preguntas por nivel sincronizadas con Notion.")
@@ -952,41 +1036,3 @@ elif menu == "📝 Quizzes & Evaluaciones":
             <p style="color:#94A3B8;">Nivel evaluado: <strong>{lvl}</strong>. Tu puntaje se ha registrado en tu base de datos central de Notion.</p>
         </div>
         """, unsafe_allow_html=True)
-
-# --- 9. POMODORO ---
-elif menu == "⏱️ Focus & Pomodoro (15-20m)":
-    st.markdown("## ⏱️ Sesión de Estudio Focalizado")
-    c1, c2 = st.columns([1.2, 1])
-    with c1:
-        st.markdown("""
-        <div class="glass-card">
-            <span class="tag-badge">TEMPORIZADOR ACTIVO</span>
-            <div class="card-title">Configurar bloque de hoy</div>
-        </div>
-        """, unsafe_allow_html=True)
-        tiempo_foco = st.select_slider("Duración de la sesión:", options=[5, 10, 15, 20, 25, 30], value=15)
-        enfoque = st.selectbox("Área a trabajar:", [
-            "Speaking Lab: Práctica Oral con IA",
-            "Listening: BBC & YouGlish",
-            "Writing Clinic: Redacción de Textos",
-            "Duolingo & Práctica de Racha",
-            "Gringo Academy: Episodio / Telenovela",
-            "Activación Neural: Audio e Inmersión Subconsciente",
-            "Flashcards: Repaso Espaciado (Niveles A0 - C2)",
-            "Quizzes & Evaluaciones de Nivel"
-        ])
-        if st.button("🔥 Iniciar y Registrar Sesión", use_container_width=True):
-            log_session(tiempo_foco, enfoque)
-            st.toast("✅ ¡Sesión guardada en Notion y localmente!")
-            st.success(f"¡Sesión de **{tiempo_foco} min** guardada con éxito!")
-    with c2:
-        st.markdown("""
-        <div class="glass-card">
-            <span class="tag-badge">HISTORIAL RECIENTE</span>
-            <div class="card-title">Últimas sesiones completadas</div>
-        </div>
-        """, unsafe_allow_html=True)
-        sesiones = get_recent_sessions()
-        if sesiones:
-            for s_date, s_min, s_focus in sesiones:
-                st.markdown(f"• **{s_min} min** — {s_focus} <span style='color:#64748B; font-size:0.8rem;'>({s_date})</span>", unsafe_allow_html=True)
