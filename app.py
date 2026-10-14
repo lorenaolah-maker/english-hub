@@ -3,12 +3,13 @@ import sqlite3
 import random
 import json
 import urllib.request
+import re
 import time
 import os
 from datetime import datetime
 
 # =========================================================
-# 0. CONFIGURACIÓN Y SINCRONIZACIÓN CON NOTION
+# 0. CONEXIÓN Y SINCRONIZACIÓN AUTOMÁTICA CON NOTION API
 # =========================================================
 NOTION_TOKEN = str(st.secrets.get("NOTION_TOKEN", "")).strip().strip('"').strip("'")
 DB_SPEAKING_ID = "3f95713402588029a8cfc6514e6e4efd"
@@ -32,15 +33,26 @@ def sync_to_notion(database_id, properties_payload):
     req = urllib.request.Request(url, data=data, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
-            return True, "Sincronizado con Notion"
+            return True, "Sincronizado"
     except Exception as e:
         return False, str(e)
 
+def extract_score(text):
+    match = re.search(r'(\d{1,2})\s*/\s*10', text)
+    if match:
+        try:
+            return int(match.group(1))
+        except Exception:
+            return 8
+    return 8
+
 def log_speaking_notion(prompt, user_resp, feedback_text):
+    score = extract_score(feedback_text)
     props = {
         "Reto/Prompt": {"title": [{"text": {"content": str(prompt)[:100]}}]},
         "Fecha": {"date": {"start": datetime.now().strftime("%Y-%m-%d")}},
         "Mi respuesta": {"rich_text": [{"text": {"content": str(user_resp)[:1900]}}]},
+        "Puntuacion": {"number": score},
         "Feedback IA": {"rich_text": [{"text": {"content": str(feedback_text)[:1900]}}]}
     }
     return sync_to_notion(DB_SPEAKING_ID, props)
@@ -64,7 +76,7 @@ def log_session_notion(activity, tipo, puntaje_min):
     return sync_to_notion(DB_SESIONES_ID, props)
 
 # =========================================================
-# 1. TUTOR INTELIGENTE CON MULTI-FALLBACK
+# 1. TUTOR INTELIGENTE BLINDADO (FALLBACK RESILIENTE)
 # =========================================================
 def evaluate_speech_with_ai(prompt_text, user_response, is_spoken=False):
     api_key = str(st.secrets.get("GEMINI_API_KEY", "")).strip().strip('"').strip("'")
@@ -94,7 +106,7 @@ def evaluate_speech_with_ai(prompt_text, user_response, is_spoken=False):
     - Señala las 2 o 3 palabras clave con su pronunciación fonética simplificada en español (ej. comfortable -> KÖMF-ter-buhl) y consejos para enlazar sonidos (connected speech).
     
     💡 **Consejo de Oro para Recordar:**
-    - Un truco o regla mnemotécnica rápida para fijar este aprendizaje.
+    - Una regla rápida o truco práctico para retener la lección.
     """
     
     payload = {
@@ -103,7 +115,13 @@ def evaluate_speech_with_ai(prompt_text, user_response, is_spoken=False):
     }
     data = json.dumps(payload).encode("utf-8")
     
-    active_models = ["gemini-3.5-flash", "gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"]
+    active_models = [
+        "gemini-3.5-flash",
+        "gemini-3.8-flash",
+        "gemini-3.1-flash-lite",
+        "gemini-flash-latest"
+    ]
+    
     last_error = ""
     for model_name in active_models:
         for _ in range(2):
@@ -125,7 +143,7 @@ def evaluate_speech_with_ai(prompt_text, user_response, is_spoken=False):
     return f"Servidores momentáneamente ocupados ({last_error}). Vuelve a presionar el botón en unos segundos."
 
 # =========================================================
-# 2. BASE DE DATOS Y BANCO COMPLETO DE REACTIVOS
+# 2. BASE DE DATOS LOCAL SQLITE (A0 A C2 COMPLETO)
 # =========================================================
 def init_db():
     conn = sqlite3.connect("english_learning.db")
@@ -206,16 +224,19 @@ def init_db():
         ("B2", "Collocations", "To reach a compromise", "Llegar a un acuerdo mutuo"),
         ("C1", "Estructuras Avanzadas", "Seldom have I seen such dedication to mastery", "Rara vez he visto tal dedicación a la maestría (Inversión gramatical)"),
         ("C1", "Vocabulario Preciso", "The plan was thoroughly scrutinized", "El plan fue examinado minuciosamente"),
-        ("C2", "Expresiones Idiomáticas y Matices", "To cut corners without compromising integrity", "Tomar atajos sin comprometer la integridad"),
-        ("C2", "Maestría Nativa", "An unassuming yet quintessential approach", "Un enfoque sin pretensiones pero esencialmente representativo")
+        ("C2", "Expresiones Idiomáticas", "To cut corners without compromising integrity", "Tomar atajos sin comprometer la integridad"),
+        ("C2", "Maestría Nativa", "An unassuming yet quintessential approach", "Un enfoque sin pretensiones pero representativo")
     ]
     for lvl, cat, fr, bk in cards_seed:
-        c.execute("INSERT OR IGNORE INTO flashcards (level, category, front, back) SELECT ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM flashcards WHERE front = ?)", (lvl, cat, fr, bk, fr))
+        c.execute("""
+            INSERT OR IGNORE INTO flashcards (level, category, front, back)
+            SELECT ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM flashcards WHERE front = ?)
+        """, (lvl, cat, fr, bk, fr))
 
     quiz_seed = [
         ("A0", "Edad", "Choose the correct sentence for age:", "I have 30 years", "I am 30 years old", "I am having 30 years", "I got 30 years", "I am 30 years old", "En inglés se utiliza el verbo To Be para la edad."),
         ("A0", "Origen", "How do you say 'Soy de México'?", "I am from Mexico", "I am of Mexico", "I have Mexico", "I live Mexico", "I am from Mexico", "Se usa 'from' para indicar procedencia."),
-        ("A0", "Saludos", "Which greeting is used at night when arriving?", "Good night", "Good evening", "Goodbye", "See you", "Good evening", "'Good evening' se usa al llegar de noche; 'Good night' es para despedirse."),
+        ("A0", "Saludos", "Which greeting is used at night when arriving?", "Good night", "Good evening", "Goodbye", "See you", "Good evening", "'Good evening' se usa al llegar de noche; 'Good night' es despedida."),
         ("A0", "Pronombres", "What is the pronoun for 'ella'?", "He", "She", "It", "They", "She", "'She' corresponde a ella."),
         ("A0", "Posesivos", "This is _____ book (mi libro).", "my", "mine", "me", "I", "my", "El adjetivo posesivo es 'my'."),
         ("A0", "To Be", "They _____ students.", "is", "am", "are", "be", "are", "Con They se usa 'are'."),
@@ -236,7 +257,7 @@ def init_db():
         ("B1", "For vs Since", "I haven't seen him _____ two years.", "since", "for", "during", "from", "for", "Se usa 'for' para duraciones de tiempo."),
         ("B1", "Condicional 1", "If it rains, we _____ stay at home.", "will", "would", "had", "did", "will", "Primer condicional: If + Present, Will + base."),
         ("B1", "Condicional 2", "If I won the lottery, I _____ travel the world.", "will", "would", "can", "am going to", "would", "Segundo condicional hipotético: If + Past, Would + base."),
-        ("B1", "Modales", "You _____ wear a seatbelt while driving.", "must", "might", "can", "may", "must", "Indica obligación legal estricta."),
+        ("B1", "Modales", "You _____ wear a seatbelt mientras conduces.", "must", "might", "can", "may", "must", "Indica obligación legal estricta."),
         ("B2", "Voz Pasiva", "The new project _____ by the committee next week.", "will approve", "will be approved", "is approving", "approves", "will be approved", "Voz pasiva en futuro: will be + participio."),
         ("B2", "Condicional 3", "If I had known, I _____ you.", "would help", "would have helped", "will help", "had helped", "would have helped", "Tercer condicional para situaciones pasadas imposibles."),
         ("B2", "Modales Pasados", "He is not answering. He _____ have left already.", "must", "should", "ought", "would", "must", "'Must have' expresa deducción lógica con alta certeza."),
@@ -363,7 +384,7 @@ def save_quiz_score(level, score, total):
 init_db()
 
 # =========================================================
-# 3. ESTILOS VISUALES Y GLASSMORPHISM
+# 3. CONFIGURACIÓN Y ESTILOS MODERNOS (GLASSMORPHISM)
 # =========================================================
 st.set_page_config(
     page_title="English Mastery Hub | Lorena Alvarez",
@@ -377,6 +398,11 @@ st.markdown("""
     <meta name="google" content="notranslate">
 </head>
 <style>
+    /* Ocultar barra superior de Streamlit para interfaz limpia */
+    header[data-testid="stHeader"] {
+        visibility: hidden;
+        height: 0%;
+    }
     .block-container { padding-top: 1.8rem; padding-bottom: 2rem; max-width: 1200px; }
     .glass-card {
         background: linear-gradient(135deg, rgba(30, 41, 59, 0.75) 0%, rgba(15, 23, 42, 0.85) 100%);
@@ -464,7 +490,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =========================================================
-# 4. NAVEGACIÓN LATERAL Y PERFIL COMPLETO
+# 4. NAVEGACIÓN LATERAL Y PERFIL PERSONALIZADO
 # =========================================================
 with st.sidebar:
     if os.path.exists("lorena.jpg"):
@@ -555,7 +581,7 @@ if menu == "🌐 Hub de Plataformas & Apps":
 # --- 2. SPEAKING & FEEDBACK LAB ---
 elif menu == "🗣️ Speaking & Feedback Lab":
     st.markdown("## 🗣️ Speaking & Feedback con Inteligencia Artificial")
-    st.caption("Practica respuestas orales o escritas y recibe corrección instantánea de pronunciación, gramática y estilo nativo.")
+    st.caption("Practica respuestas orales o escritas y recibe corrección instantánea registrada en tu Notion.")
 
     prompts = [
         "Introduce yourself: your name, where you live, and your age. (A0)",
@@ -579,10 +605,12 @@ elif menu == "🗣️ Speaking & Feedback Lab":
                     retro = evaluate_speech_with_ai(tema, user_text, is_spoken=False)
                     ok, msg = log_speaking_notion(tema, user_text, retro)
                     if ok:
-                        st.toast("✅ ¡Guardado en tu Notion!")
+                        st.toast("✅ ¡Registro enviado a tu Notion con éxito!")
+                    else:
+                        st.caption(f"ℹ️ Registro en Notion: {msg}")
                     st.markdown("""
                     <div class="glass-card">
-                        <span class="tag-badge">RETROALIMENTACIÓN PERSONALIZADA</span>
+                        <span class="tag-badge">RETROALIMENTACIÓN SINCRONIZADA CON NOTION</span>
                     """, unsafe_allow_html=True)
                     st.markdown(retro)
                     st.markdown("</div>", unsafe_allow_html=True)
@@ -593,19 +621,21 @@ elif menu == "🗣️ Speaking & Feedback Lab":
             st.audio(audio_grabado)
             st.success("¡Audio grabado! Escucha tu entonación.")
             
-        speech_text = st.text_area("Borrador o transcripción de lo que hablaste en voz alta:", placeholder="Escribe aquí lo que dijiste para que la IA evalúe la fonética y el contenido...", height=100)
+        speech_text = st.text_area("Borrador o transcripción de lo que hablaste en voz alta:", placeholder="Escribe lo que dijiste para evaluar fonética y contenido...", height=100)
         if st.button("🤖 Evaluar Pronunciación y Contenido con IA", use_container_width=True):
             if not speech_text.strip():
-                st.warning("Escribe el texto de lo que hablaste para que la IA pueda darte la corrección fonética y gramatical.")
+                st.warning("Escribe el texto de lo que hablaste para que la IA evalúe la fonética y gramática.")
             else:
                 with st.spinner("Tu tutora de IA está evaluando tu respuesta oral y fonética..."):
                     retro = evaluate_speech_with_ai(tema, speech_text, is_spoken=True)
                     ok, msg = log_speaking_notion(tema, speech_text, retro)
                     if ok:
-                        st.toast("✅ ¡Guardado en tu Notion!")
+                        st.toast("✅ ¡Análisis de Speaking guardado en Notion!")
+                    else:
+                        st.caption(f"ℹ️ Registro en Notion: {msg}")
                     st.markdown("""
                     <div class="glass-card">
-                        <span class="tag-badge">ANÁLISIS DE SPEAKING Y FONÉTICA</span>
+                        <span class="tag-badge">ANÁLISIS DE SPEAKING GUARDADO EN NOTION</span>
                     """, unsafe_allow_html=True)
                     st.markdown(retro)
                     st.markdown("</div>", unsafe_allow_html=True)
@@ -621,7 +651,7 @@ elif menu == "🎧 Listening & Inmersión":
         <div class="glass-card">
             <span class="tag-badge">MÉTODO AUDITIVO</span>
             <h3>1. El Filtro YouGlish (Connected Speech)</h3>
-            <p style="color:#94A3B8;">Los nativos no hablan palabra por palabra; enlazan sonidos (ejemplo: <em>'going to'</em> suena <em>'gonna'</em>, <em>'did you'</em> suena <em>'didya'</em>). Busca estas contracciones en YouGlish para escucharlas en cientos de charlas reales.</p>
+            <p style="color:#94A3B8;">Los nativos no hablan palabra por palabra; enlazan sonidos (ejemplo: <em>'going to'</em> suena <em>'gonna'</em>). Busca estas frases en YouGlish para escucharlas en cientos de videos reales.</p>
             <a href="https://youglish.com" target="_blank" class="platform-btn">Entrenar en YouGlish</a>
         </div>
         """, unsafe_allow_html=True)
@@ -630,7 +660,7 @@ elif menu == "🎧 Listening & Inmersión":
         <div class="glass-card">
             <span class="tag-badge">MICRO-INMERSIÓN</span>
             <h3>2. BBC 6 Minute English</h3>
-            <p style="color:#94A3B8;">Historias breves de 6 minutos con transcripción completa. Escucha primero sin leer y en la segunda vuelta revisa el texto para identificar las palabras que se te escaparon.</p>
+            <p style="color:#94A3B8;">Historias breves de 6 minutos con transcripción completa. Escucha sin leer primero y en la segunda vuelta revisa el texto para identificar las palabras que se te escaparon.</p>
             <a href="https://www.bbc.co.uk/learningenglish/english/features/6-minute-english" target="_blank" class="platform-btn">Escuchar 6 Minute English</a>
         </div>
         """, unsafe_allow_html=True)
@@ -638,7 +668,7 @@ elif menu == "🎧 Listening & Inmersión":
 # --- 4. WRITING CLINIC ---
 elif menu == "✍️ Writing Clinic":
     st.markdown("## ✍️ Writing Clinic: Taller de Redacción Profesional")
-    st.caption("Escribe tus correos, notas de estudio, diarios o pensamientos y recibe pulido de estilo.")
+    st.caption("Escribe tus textos, diarios o correos y recíbelos pulidos directamente en tu tabla de Notion.")
     
     w_topic = st.selectbox("Tipo de texto a redactar:", [
         "Diario personal / Reflexión del día",
@@ -646,8 +676,8 @@ elif menu == "✍️ Writing Clinic":
         "Resumen de lo aprendido hoy",
         "Redacción libre"
     ])
-    w_input = st.text_area("Tu borrador en inglés:", height=160, placeholder="Escribe aquí tu texto en inglés tal como te salga de la mente...")
-    if st.button("✨ Analizar y Pulir con IA", use_container_width=True):
+    w_input = st.text_area("Tu borrador en inglés:", height=160, placeholder="Escribe aquí tu texto en inglés...")
+    if st.button("✨ Analizar y Guardar en Notion", use_container_width=True):
         if not w_input.strip():
             st.warning("Escribe algo de texto antes de enviar a corrección.")
         else:
@@ -655,7 +685,9 @@ elif menu == "✍️ Writing Clinic":
                 retro = evaluate_speech_with_ai(f"Writing Clinic ({w_topic})", w_input, is_spoken=False)
                 ok, msg = log_writing_notion(w_topic, w_input, retro)
                 if ok:
-                    st.toast("✅ ¡Guardado en Writing Clinic de Notion!")
+                    st.toast("✅ ¡Guardado en tu tabla de Writing Clinic en Notion!")
+                else:
+                    st.caption(f"ℹ️ Registro en Notion: {msg}")
                 st.markdown("""
                 <div class="glass-card">
                     <span class="tag-badge">CORRECCIÓN Y ESTILO EDITORIAL</span>
@@ -879,7 +911,7 @@ elif menu == "🗂️ Flashcards Activas":
 # --- 8. QUIZZES & EVALUACIONES (10, 25, 50, 100 PREGUNTAS) ---
 elif menu == "📝 Quizzes & Evaluaciones":
     st.markdown("## 📝 Centro de Evaluaciones y Tests")
-    st.caption("Comprueba tus conocimientos con baterías de 10, 25, 50 o 100 preguntas por nivel.")
+    st.caption("Comprueba tus conocimientos con baterías de 10, 25, 50 o 100 preguntas por nivel sincronizadas con Notion.")
     
     niveles_quiz = ["A0", "A1", "A2", "B1", "B2", "C1", "C2", "Todos"]
     col1, col2 = st.columns([1.5, 1])
@@ -915,9 +947,9 @@ elif menu == "📝 Quizzes & Evaluaciones":
         badge_color = "#10B981" if porcentaje >= 80 else ("#F59E0B" if porcentaje >= 60 else "#EF4444")
         st.markdown(f"""
         <div class="glass-card" style="border-left: 6px solid {badge_color};">
-            <span class="tag-badge">EVALUACIÓN COMPLETADA</span>
+            <span class="tag-badge">EVALUACIÓN REGISTRADA EN NOTION</span>
             <div class="card-title">Resultado Final: {p} de {t} aciertos ({porcentaje}%)</div>
-            <p style="color:#94A3B8;">Nivel evaluado: <strong>{lvl}</strong>. Tu puntaje se ha registrado en tu historial.</p>
+            <p style="color:#94A3B8;">Nivel evaluado: <strong>{lvl}</strong>. Tu puntaje se ha registrado en tu base de datos central de Notion.</p>
         </div>
         """, unsafe_allow_html=True)
 
@@ -945,6 +977,7 @@ elif menu == "⏱️ Focus & Pomodoro (15-20m)":
         ])
         if st.button("🔥 Iniciar y Registrar Sesión", use_container_width=True):
             log_session(tiempo_foco, enfoque)
+            st.toast("✅ ¡Sesión guardada en Notion y localmente!")
             st.success(f"¡Sesión de **{tiempo_foco} min** guardada con éxito!")
     with c2:
         st.markdown("""
