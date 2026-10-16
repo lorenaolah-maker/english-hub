@@ -208,8 +208,10 @@ def init_db():
         )
     """)
     
-    c.execute("INSERT OR IGNORE INTO courses VALUES ('ingles_practico', 'Inglés Práctico (App & Biblioteca)', 1, 12, 'Semana 1', ?)", (str(datetime.now().date()),))
+    # Limpieza de duplicados: consolidar solo Gringo Academy y la App de Inglés Práctico
+    c.execute("DELETE FROM courses WHERE id = 'neural'")
     c.execute("INSERT OR IGNORE INTO courses VALUES ('gringo', 'Gringo Academy (Método Inmersivo)', 1, 130, 'Paso 1: Vocabulario en contexto', ?)", (str(datetime.now().date()),))
+    c.execute("INSERT OR IGNORE INTO courses VALUES ('ingles_practico', 'Inglés Práctico (App & Biblioteca)', 1, 12, 'Semana 1', ?)", (str(datetime.now().date()),))
     
     cards_seed = [
         ("A0", "Saludos", "I am 38 years old", "Tengo 38 años (En inglés la edad se ES, no se 'tiene')"),
@@ -429,7 +431,7 @@ def save_quiz_score(level, score, total):
 init_db()
 
 # =========================================================
-# 3. CONFIGURACIÓN Y ESTILOS MODERNOS (CON LOGROS PASTEL)
+# 3. CONFIGURACIÓN Y ESTILOS MODERNOS
 # =========================================================
 st.set_page_config(
     page_title="English Mastery Hub | Lorena Alvarez",
@@ -546,22 +548,16 @@ st.markdown("""
         margin-bottom: 1.5rem;
         box-shadow: 0 8px 25px rgba(234, 88, 12, 0.15);
     }
-    .achievement-card {
-        background: rgba(255, 255, 255, 0.04);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 18px;
-        padding: 1.2rem;
-        margin-top: 1rem;
-    }
-    .badge-grid {
-        display: flex;
-        justify-content: space-around;
-        gap: 12px;
-        margin-top: 10px;
-    }
-    .badge-item {
-        flex: 1;
-        text-align: center;
+    .btn-hotmart-link {
+        display: inline-block;
+        background: linear-gradient(135deg, #EA580C 0%, #C2410C 100%);
+        color: white !important;
+        font-weight: 700;
+        padding: 10px 18px;
+        border-radius: 10px;
+        text-decoration: none;
+        box-shadow: 0 4px 12px rgba(234, 88, 12, 0.35);
+        margin-bottom: 14px;
     }
     .badge-icon-box {
         width: 60px;
@@ -572,23 +568,17 @@ st.markdown("""
         align-items: center;
         justify-content: center;
         font-size: 1.6rem;
-        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
     }
-    .badge-peach { background: #FFEDD5; color: #9A3412; }
-    .badge-blue  { background: #E0F2FE; color: #0369A1; }
-    .badge-pink  { background: #FFE4E6; color: #9F1239; }
-    .badge-tan   { background: #FEF3C7; color: #92400E; }
-    .badge-title {
-        font-size: 0.75rem;
-        font-weight: 700;
-        color: #E2E8F0;
-        letter-spacing: 0.2px;
-    }
+    .badge-peach { background: #FFEDD5; }
+    .badge-blue  { background: #E0F2FE; }
+    .badge-pink  { background: #FFE4E6; }
+    .badge-tan   { background: #FEF3C7; }
 </style>
 """, unsafe_allow_html=True)
 
 # =========================================================
-# 4. NAVEGACIÓN LATERAL (FOCUS AL INICIO & APP INGLÉS PRÁCTICO)
+# 4. NAVEGACIÓN LATERAL
 # =========================================================
 with st.sidebar:
     if os.path.exists("lorena.jpg"):
@@ -632,7 +622,7 @@ st.sidebar.markdown(
 # 5. MÓDULOS DE LA APLICACIÓN
 # =========================================================
 
-# --- 1. FOCUS & POMODORO (CON SÍMBOLOS Y LOGROS PASTEL) ---
+# --- 1. FOCUS & POMODORO (CON SÍMBOLOS PASTEL RENDERIZADOS LIMPIOS) ---
 if menu == "⏱️ Focus & Pomodoro (15-20m)":
     st.markdown("## ⏱️ Sesión de Estudio Focalizado & Métricas")
     st.caption("Organiza tus bloques de inmersión y verifica tus horas dedicadas por semana, mes y destreza.")
@@ -641,72 +631,40 @@ if menu == "⏱️ Focus & Pomodoro (15-20m)":
     
     c_st1, c_st2, c_st3, c_st4 = st.columns(4)
     with c_st1:
-        st.markdown(f"""
-        <div class="stat-box">
-            <div class="stat-number">{analytics['week_hours']}h</div>
-            <div class="stat-label">Esta Semana</div>
-            <div style="font-size:0.75rem; color:#64748B;">{analytics['week_min']} minutos</div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(f'<div class="stat-box"><div class="stat-number">{analytics["week_hours"]}h</div><div class="stat-label">Esta Semana</div><div style="font-size:0.75rem; color:#64748B;">{analytics["week_min"]} minutos</div></div>', unsafe_allow_html=True)
     with c_st2:
-        st.markdown(f"""
-        <div class="stat-box">
-            <div class="stat-number">{analytics['month_hours']}h</div>
-            <div class="stat-label">Este Mes</div>
-            <div style="font-size:0.75rem; color:#64748B;">{analytics['month_min']} minutos</div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(f'<div class="stat-box"><div class="stat-number">{analytics["month_hours"]}h</div><div class="stat-label">Este Mes</div><div style="font-size:0.75rem; color:#64748B;">{analytics["month_min"]} minutos</div></div>', unsafe_allow_html=True)
     with c_st3:
-        st.markdown(f"""
-        <div class="stat-box">
-            <div class="stat-number">{analytics['total_hours']}h</div>
-            <div class="stat-label">Total Acumulado</div>
-            <div style="font-size:0.75rem; color:#64748B;">{analytics['total_min']} minutos</div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(f'<div class="stat-box"><div class="stat-number">{analytics["total_hours"]}h</div><div class="stat-label">Total Acumulado</div><div style="font-size:0.75rem; color:#64748B;">{analytics["total_min"]} minutos</div></div>', unsafe_allow_html=True)
     with c_st4:
         top_area = analytics['by_area'][0][0] if analytics['by_area'] else "Sin registro"
         top_short = top_area.split(":")[0] if ":" in top_area else top_area
-        st.markdown(f"""
-        <div class="stat-box">
-            <div class="stat-number" style="font-size:1.25rem; color:#F59E0B; margin-top:6px;">{top_short}</div>
-            <div class="stat-label">Habilidad Líder</div>
-            <div style="font-size:0.75rem; color:#64748B;">Mayor tiempo</div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(f'<div class="stat-box"><div class="stat-number" style="font-size:1.25rem; color:#F59E0B; margin-top:6px;">{top_short}</div><div class="stat-label">Habilidad Líder</div><div style="font-size:0.75rem; color:#64748B;">Mayor tiempo</div></div>', unsafe_allow_html=True)
 
+    # RANGO DE EXPERIENCIA Y LOGROS PASTEL
     st.markdown(f"""
-    <div class="achievement-card">
+    <div class="glass-card" style="margin-top:1.2rem; padding:1.2rem;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-            <div style="font-size:1.1rem; font-weight:700; color:#F8FAFC;">{analytics['level_tier']}</div>
-            <div style="font-size:1.1rem; font-weight:800; color:#38BDF8;">{analytics['total_xp']} XP</div>
+            <div style="font-size:1.15rem; font-weight:700; color:#F8FAFC;">{analytics['level_tier']}</div>
+            <div style="font-size:1.15rem; font-weight:800; color:#38BDF8;">{analytics['total_xp']} XP</div>
         </div>
         <div style="background:rgba(255,255,255,0.1); border-radius:9999px; height:8px; overflow:hidden;">
             <div style="background:linear-gradient(90deg, #0284C7, #38BDF8); width:{min(int((analytics['total_xp']/3000)*100), 100)}%; height:100%;"></div>
         </div>
         <div style="font-size:0.75rem; color:#94A3B8; margin-top:6px;">Faltan {max(3000 - analytics['total_xp'], 100)} XP para el siguiente rango de maestría</div>
-        
-        <div style="font-size:0.95rem; font-weight:700; color:#F8FAFC; margin-top:16px; margin-bottom:4px;">Logros de Consistencia</div>
-        <div class="badge-grid">
-            <div class="badge-item">
-                <div class="badge-icon-box badge-peach">☀️</div>
-                <div class="badge-title">Early Bird</div>
-            </div>
-            <div class="badge-item">
-                <div class="badge-icon-box badge-blue">🌱</div>
-                <div class="badge-title">First Step</div>
-            </div>
-            <div class="badge-item">
-                <div class="badge-icon-box badge-pink">🔥</div>
-                <div class="badge-title">Warming Up</div>
-            </div>
-            <div class="badge-item">
-                <div class="badge-icon-box badge-tan">📖</div>
-                <div class="badge-title">Module Down</div>
-            </div>
-        </div>
     </div>
     """, unsafe_allow_html=True)
+
+    st.markdown("#### 🏆 Logros de Consistencia")
+    col_b1, col_b2, col_b3, col_b4 = st.columns(4)
+    with col_b1:
+        st.markdown('<div style="text-align:center;"><div class="badge-icon-box badge-peach">☀️</div><div style="font-weight:700; font-size:0.85rem; color:#F8FAFC;">Early Bird</div></div>', unsafe_allow_html=True)
+    with col_b2:
+        st.markdown('<div style="text-align:center;"><div class="badge-icon-box badge-blue">🌱</div><div style="font-weight:700; font-size:0.85rem; color:#F8FAFC;">First Step</div></div>', unsafe_allow_html=True)
+    with col_b3:
+        st.markdown('<div style="text-align:center;"><div class="badge-icon-box badge-pink">🔥</div><div style="font-weight:700; font-size:0.85rem; color:#F8FAFC;">Warming Up</div></div>', unsafe_allow_html=True)
+    with col_b4:
+        st.markdown('<div style="text-align:center;"><div class="badge-icon-box badge-tan">📖</div><div style="font-weight:700; font-size:0.85rem; color:#F8FAFC;">Module Down</div></div>', unsafe_allow_html=True)
 
     st.markdown("<div style='margin-top: 1.5rem;'></div>", unsafe_allow_html=True)
 
@@ -850,11 +808,12 @@ elif menu == "🗣️ Speaking & Feedback Lab":
                         st.markdown(retro)
                         st.markdown("</div>", unsafe_allow_html=True)
 
-# --- 3. NUEVA SECCIÓN: APP INGLÉS PRÁCTICO & BIBLIOTECA ---
+# --- 3. APP INGLÉS PRÁCTICO & GRINGO ACADEMY (HOTMART DIRECTO) ---
 elif menu == "📱 App Inglés Práctico (Biblioteca)":
     st.markdown("## 📱 App Inglés Práctico: Tu Nuevo Portal Dedicado")
-    st.caption("Acceso directo a la plataforma independiente sin pasar por Hotmart, con biblioteca de PDFs y asistente IA.")
+    st.caption("Acceso directo a la plataforma independiente de Inglés Práctico y acceso a Hotmart para Gringo Academy.")
 
+    # HERO: INGLÉS PRÁCTICO
     st.markdown("""
     <div class="glass-card" style="border: 1px solid rgba(249, 115, 22, 0.4); background: linear-gradient(135deg, rgba(30, 41, 59, 0.85) 0%, rgba(15, 23, 42, 0.95) 100%);">
         <span class="tag-badge" style="background:rgba(249, 115, 22, 0.18); color:#FB923C; border-color:rgba(249, 115, 22, 0.35);">NUEVA APLICACIÓN OFICIAL</span>
@@ -877,34 +836,57 @@ elif menu == "📱 App Inglés Práctico (Biblioteca)":
     </div>
     """, unsafe_allow_html=True)
 
-    st.markdown("### 🎯 Tu Registro de Semanas y Módulos")
+    # SEGUIMIENTO LIMPIO (GRINGO ACADEMY + INGLÉS PRÁCTICO)
+    st.markdown("### 🎯 Tu Registro de Cursos y Módulos")
     courses = get_courses()
     for row in courses:
         cid, name, unit, total, step, last = row[0], row[1], row[2], row[3], row[4], row[5]
-        st.markdown(f"""
-        <div class="glass-card">
-            <span class="tag-badge">SEGUIMIENTO DE APRENDIZAJE</span>
-            <div class="card-title">{name}</div>
-        </div>
-        """, unsafe_allow_html=True)
-        col_a, col_b, col_c = st.columns([2, 1.2, 1])
-        pct = int((unit / total) * 100) if total > 0 else 0
-        col_a.progress(pct / 100)
-        col_a.caption(f"Avance: **{unit} de {total}** ({pct}%) | Última sesión: {last}")
-        if cid == "ingles_practico":
-            bloques = [f"Semana {i}" for i in range(1, 13)]
-            idx_b = bloques.index(step) if step in bloques else 0
-            nuevo_paso = col_b.selectbox("Semana actual:", bloques, index=idx_b, key=f"step_{cid}")
-            nueva_unidad = col_c.number_input("Unidad completada:", min_value=1, max_value=12, value=unit, key=f"unit_{cid}")
-        else:
+        
+        # TARJETA GRINGO ACADEMY CON BOTÓN DIRECTO A HOTMART
+        if cid == "gringo":
+            st.markdown(f"""
+            <div class="glass-card">
+                <span class="tag-badge">MÉTODO INMERSIVO</span>
+                <div class="card-title">{name}</div>
+                <p style="color:#94A3B8; font-size:0.85rem; margin-bottom:12px;">Accede a tus telenovelas y lecciones directamente en la plataforma de Hotmart:</p>
+                <a href="https://consumer.hotmart.com" target="_blank" class="btn-hotmart-link">
+                    🎬 Abrir Gringo Academy en Hotmart
+                </a>
+            </div>
+            """, unsafe_allow_html=True)
+            col_a, col_b, col_c = st.columns([2, 1.2, 1])
+            pct = int((unit / total) * 100) if total > 0 else 0
+            col_a.progress(pct / 100)
+            col_a.caption(f"Avance: **{unit} de {total} telenovelas** ({pct}%) | Última sesión: {last}")
             pasos = ["Paso 1: Vocabulario en contexto", "Paso 2: Gramática esencial", "Paso 3: Pronunciación nativa", "Paso 4: Examen de Listening", "Paso 5: Práctica de Speaking"]
             idx_p = pasos.index(step) if step in pasos else 0
             nuevo_paso = col_b.selectbox("Fase actual:", pasos, index=idx_p, key=f"step_{cid}")
             nueva_unidad = col_c.number_input("Telenovela / Bloque:", min_value=1, max_value=total, value=unit, key=f"unit_{cid}")
-        if col_a.button(f"💾 Guardar Avance en Notion", key=f"btn_{cid}"):
-            update_course(cid, nueva_unidad, nuevo_paso)
-            st.toast("Progreso guardado en Notion y en la app")
-            st.rerun()
+            if col_a.button(f"💾 Guardar Avance de Gringo Academy", key=f"btn_{cid}"):
+                update_course(cid, nueva_unidad, nuevo_paso)
+                st.toast("Progreso de Gringo Academy guardado")
+                st.rerun()
+
+        # TARJETA INGLÉS PRÁCTICO
+        elif cid == "ingles_practico":
+            st.markdown(f"""
+            <div class="glass-card">
+                <span class="tag-badge">ACTIVACIÓN NEURAL</span>
+                <div class="card-title">{name}</div>
+            </div>
+            """, unsafe_allow_html=True)
+            col_a, col_b, col_c = st.columns([2, 1.2, 1])
+            pct = int((unit / total) * 100) if total > 0 else 0
+            col_a.progress(pct / 100)
+            col_a.caption(f"Avance: **{unit} de {total} semanas** ({pct}%) | Última sesión: {last}")
+            bloques = [f"Semana {i}" for i in range(1, 13)]
+            idx_b = bloques.index(step) if step in bloques else 0
+            nuevo_paso = col_b.selectbox("Semana actual:", bloques, index=idx_b, key=f"step_{cid}")
+            nueva_unidad = col_c.number_input("Semana completada:", min_value=1, max_value=12, value=unit, key=f"unit_{cid}")
+            if col_a.button(f"💾 Guardar Avance de Inglés Práctico", key=f"btn_{cid}"):
+                update_course(cid, nueva_unidad, nuevo_paso)
+                st.toast("Progreso de Inglés Práctico guardado")
+                st.rerun()
 
 # --- 4. HUB DE PLATAFORMAS & APPS ---
 elif menu == "🌐 Hub de Plataformas & Apps":
